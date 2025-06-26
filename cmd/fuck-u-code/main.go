@@ -41,6 +41,27 @@ var defaultExcludes = []string{
 	"**/migrations/**", "**/generated/**", "**/node_modules/**",
 	"**/logs/**", "**/tmp/**", "**/temp/**", "**/dist/**", "**/test-results/**",
 	"**/testdata/**",
+
+	// 测试文件排除
+	// Go语言测试文件
+	"**/*_test.go", "**/testdata/**/*.go",
+
+	// Python测试文件
+	"**/test_*.py", "**/*_test.py", "**/tests/**/*.py", "**/testing/**/*.py", "**/pytest/**/*.py",
+
+	// JavaScript/TypeScript测试文件
+	"**/*.spec.js", "**/*.test.js", "**/__tests__/**/*.js", "**/test/**/*.js", "**/tests/**/*.js",
+	"**/*.spec.ts", "**/*.test.ts", "**/__tests__/**/*.ts", "**/test/**/*.ts", "**/tests/**/*.ts",
+	"**/*.spec.jsx", "**/*.test.jsx", "**/*.spec.tsx", "**/*.test.tsx",
+	"**/jest.config.js", "**/jest.setup.js", "**/jest.config.ts", "**/cypress/**",
+
+	// Java测试文件
+	"**/src/test/**/*.java", "**/*Test.java", "**/*Tests.java", "**/*IT.java", "**/JUnit/**/*.java",
+
+	// C/C++测试文件
+	"**/*_test.c", "**/*_test.cpp", "**/*_tests.c", "**/*_tests.cpp",
+	"**/test/**/**.c", "**/test/**/**.cpp", "**/tests/**/**.c", "**/tests/**/**.cpp",
+	"**/gtest/**", "**/googletest/**", "**/catch/**", "**/boost/test/**",
 }
 
 func main() {
