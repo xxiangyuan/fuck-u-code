@@ -1,0 +1,205 @@
+package metrics
+
+import (
+	"fmt"
+	"go/ast"
+	"go/token"
+	"strings"
+
+	"github.com/Done-0/fuck-u-code/pkg/common"
+)
+
+// StructureAnalysisMetric 分析代码结构，检测乱嵌套乱引用
+type StructureAnalysisMetric struct {
+	*BaseMetric
+}
+
+// NewStructureAnalysisMetric 创建代码结构分析指标
+func NewStructureAnalysisMetric() *StructureAnalysisMetric {
+	return &StructureAnalysisMetric{
+		BaseMetric: NewBaseMetric(
+			"代码结构",
+			"检测代码的嵌套深度和引用复杂度，评估结构清晰度",
+			0.2,
+			[]common.LanguageType{common.Go},
+		),
+	}
+}
+
+// Analyze 分析代码结构
+func (m *StructureAnalysisMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
+	var issues []string
+
+	// 分析嵌套深度
+	maxNestingDepth := 0
+	nestingIssues := m.analyzeNestingDepth(file, &maxNestingDepth)
+	issues = append(issues, nestingIssues...)
+
+	// 分析循环引用
+	circularIssues := m.analyzeCircularDependencies(file)
+	issues = append(issues, circularIssues...)
+
+	// 分析导入复杂度
+	importIssues := m.analyzeImportComplexity(file)
+	issues = append(issues, importIssues...)
+
+	// 计算结构得分
+	score := m.calculateScore(maxNestingDepth, len(circularIssues), len(importIssues))
+	return score, issues
+}
+
+// analyzeNestingDepth 分析代码嵌套深度
+func (m *StructureAnalysisMetric) analyzeNestingDepth(file *ast.File, maxDepth *int) []string {
+	var issues []string
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncDecl:
+			depth := m.calculateNestingDepth(node.Body)
+			if depth > *maxDepth {
+				*maxDepth = depth
+			}
+
+			if depth > 5 {
+				issues = append(issues, fmt.Sprintf("函数 %s 嵌套深度过高 (%d 层)，建议重构", node.Name.Name, depth))
+			} else if depth > 3 {
+				issues = append(issues, fmt.Sprintf("函数 %s 嵌套深度较高 (%d 层)，考虑简化", node.Name.Name, depth))
+			}
+		}
+		return true
+	})
+
+	return issues
+}
+
+// calculateNestingDepth 计算代码块的嵌套深度
+func (m *StructureAnalysisMetric) calculateNestingDepth(block *ast.BlockStmt) int {
+	if block == nil {
+		return 0
+	}
+
+	maxDepth := 0
+
+	var inspectBlock func(block *ast.BlockStmt, currentDepth int)
+	inspectBlock = func(block *ast.BlockStmt, currentDepth int) {
+		if block == nil {
+			return
+		}
+
+		for _, stmt := range block.List {
+			switch s := stmt.(type) {
+			case *ast.IfStmt:
+				inspectBlock(s.Body, currentDepth+1)
+				if s.Else != nil {
+					if elseBlock, ok := s.Else.(*ast.BlockStmt); ok {
+						inspectBlock(elseBlock, currentDepth+1)
+					} else if elseIf, ok := s.Else.(*ast.IfStmt); ok {
+						// 递归处理else if
+						if elseIf.Body != nil {
+							inspectBlock(elseIf.Body, currentDepth+1)
+						}
+					}
+				}
+			case *ast.ForStmt:
+				inspectBlock(s.Body, currentDepth+1)
+			case *ast.RangeStmt:
+				inspectBlock(s.Body, currentDepth+1)
+			case *ast.SwitchStmt:
+				for _, c := range s.Body.List {
+					if caseClause, ok := c.(*ast.CaseClause); ok {
+						for _, caseStmt := range caseClause.Body {
+							if blockStmt, ok := caseStmt.(*ast.BlockStmt); ok {
+								inspectBlock(blockStmt, currentDepth+1)
+							}
+						}
+					}
+				}
+			case *ast.SelectStmt:
+				for _, c := range s.Body.List {
+					if commClause, ok := c.(*ast.CommClause); ok {
+						for _, commStmt := range commClause.Body {
+							if blockStmt, ok := commStmt.(*ast.BlockStmt); ok {
+								inspectBlock(blockStmt, currentDepth+1)
+							}
+						}
+					}
+				}
+			case *ast.BlockStmt:
+				inspectBlock(s, currentDepth+1)
+			}
+		}
+
+		if currentDepth > maxDepth {
+			maxDepth = currentDepth
+		}
+	}
+
+	inspectBlock(block, 1)
+	return maxDepth
+}
+
+// analyzeCircularDependencies 分析循环依赖
+func (m *StructureAnalysisMetric) analyzeCircularDependencies(file *ast.File) []string {
+	// 简化版本：检查是否有自引用
+	var issues []string
+	pkgName := file.Name.Name
+
+	for _, imp := range file.Imports {
+		if imp.Path != nil {
+			path := strings.Trim(imp.Path.Value, "\"")
+			if strings.Contains(path, pkgName) {
+				issues = append(issues, fmt.Sprintf("可能存在循环引用: %s 引用了包含自身名称的包 %s", pkgName, path))
+			}
+		}
+	}
+
+	return issues
+}
+
+// analyzeImportComplexity 分析导入复杂度
+func (m *StructureAnalysisMetric) analyzeImportComplexity(file *ast.File) []string {
+	var issues []string
+	importCount := len(file.Imports)
+
+	if importCount > 20 {
+		issues = append(issues, fmt.Sprintf("导入包数量过多 (%d)，考虑拆分文件或重构", importCount))
+	} else if importCount > 15 {
+		issues = append(issues, fmt.Sprintf("导入包数量较多 (%d)，建议检查是否需要全部导入", importCount))
+	}
+
+	return issues
+}
+
+// calculateScore 计算结构得分
+func (m *StructureAnalysisMetric) calculateScore(nestingDepth, circularCount, importIssueCount int) float64 {
+	// 嵌套深度评分
+	nestingScore := 0.0
+	if nestingDepth <= 2 {
+		nestingScore = 0.0
+	} else if nestingDepth <= 3 {
+		nestingScore = 0.2
+	} else if nestingDepth <= 4 {
+		nestingScore = 0.4
+	} else if nestingDepth <= 5 {
+		nestingScore = 0.6
+	} else if nestingDepth <= 6 {
+		nestingScore = 0.8
+	} else {
+		nestingScore = 1.0
+	}
+
+	// 循环引用评分
+	circularScore := float64(circularCount) * 0.2
+	if circularScore > 1.0 {
+		circularScore = 1.0
+	}
+
+	// 导入复杂度评分
+	importScore := float64(importIssueCount) * 0.2
+	if importScore > 1.0 {
+		importScore = 1.0
+	}
+
+	// 综合评分
+	return (nestingScore*0.5 + circularScore*0.3 + importScore*0.2)
+}

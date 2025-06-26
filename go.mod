@@ -1,16 +1,24 @@
 module github.com/Done-0/fuck-u-code
 
-go 1.23.5
+go 1.20
 
 require (
-	github.com/fatih/color v1.18.0
-	github.com/spf13/cobra v1.9.1
+	// Python解析
+	github.com/alecthomas/participle/v2 v2.0.0
+	github.com/fatih/color v1.15.0
+	// JavaScript/TypeScript解析
+	github.com/robertkrimen/otto v0.2.1
+	// C/C++解析
+	github.com/smacker/go-tree-sitter v0.0.0-20230720070738-0d0a9f78d8f8
+	github.com/spf13/cobra v1.7.0
 )
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
-	golang.org/x/sys v0.25.0 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
+	golang.org/x/sys v0.8.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
+	gopkg.in/sourcemap.v1 v1.0.5 // indirect
 )

@@ -5,29 +5,25 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
+
+	"github.com/Done-0/fuck-u-code/pkg/common"
 )
 
 // CodeDuplicationMetric 评估代码重复度
-type CodeDuplicationMetric struct{}
+type CodeDuplicationMetric struct {
+	*BaseMetric
+}
 
 // NewCodeDuplicationMetric 创建代码重复度指标
 func NewCodeDuplicationMetric() *CodeDuplicationMetric {
-	return &CodeDuplicationMetric{}
-}
-
-// Name 返回指标名称
-func (m *CodeDuplicationMetric) Name() string {
-	return "代码重复度"
-}
-
-// Description 返回指标描述
-func (m *CodeDuplicationMetric) Description() string {
-	return "评估代码中重复逻辑的比例，重复代码越多，越需要抽象和重构"
-}
-
-// Weight 返回指标权重
-func (m *CodeDuplicationMetric) Weight() float64 {
-	return 0.15
+	return &CodeDuplicationMetric{
+		BaseMetric: NewBaseMetric(
+			"代码重复度",
+			"评估代码中重复逻辑的比例，重复代码越多，越需要抽象和重构",
+			0.15,
+			[]common.LanguageType{common.Go},
+		),
+	}
 }
 
 // Analyze 分析代码重复度
@@ -35,7 +31,7 @@ func (m *CodeDuplicationMetric) Analyze(file *ast.File, fileSet *token.FileSet, 
 	var issues []string
 
 	// 寻找类似的函数实现
-	similarFunctions := make(map[string][]string) // 代码特征 -> 函数列表
+	similarFunctions := make(map[string][]string)
 	totalFunctions := 0
 
 	// 遍历所有函数声明

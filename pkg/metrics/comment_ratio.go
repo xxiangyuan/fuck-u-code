@@ -1,83 +1,134 @@
+// Package metrics 提供代码质量分析指标
+// 创建者：Done-0
 package metrics
 
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
-	"strings"
+
+	"github.com/Done-0/fuck-u-code/pkg/common"
+	"github.com/Done-0/fuck-u-code/pkg/i18n"
+	"github.com/Done-0/fuck-u-code/pkg/parser"
 )
 
-// CommentRatioMetric 评估代码注释比例
-type CommentRatioMetric struct{}
+// CommentRatioMetric 检测代码注释覆盖率
+type CommentRatioMetric struct {
+	*BaseMetric
+	translator i18n.Translator
+}
 
-// NewCommentRatioMetric 创建注释比例指标
+// NewCommentRatioMetric 创建注释覆盖率指标
 func NewCommentRatioMetric() *CommentRatioMetric {
-	return &CommentRatioMetric{}
+	translator := i18n.NewTranslator(i18n.ZhCN)
+	return &CommentRatioMetric{
+		BaseMetric: NewBaseMetric(
+			i18n.FormatKey("metric", "comment_ratio"),
+			"检测代码的注释覆盖率，良好的注释能提高代码可读性和可维护性",
+			0.15,
+			nil,
+		),
+		translator: translator,
+	}
 }
 
-// Name 返回指标名称
-func (m *CommentRatioMetric) Name() string {
-	return "注释覆盖率"
+// SetTranslator 设置翻译器
+func (m *CommentRatioMetric) SetTranslator(translator i18n.Translator) {
+	m.translator = translator
+	m.name = translator.Translate(i18n.FormatKey("metric", "comment_ratio"))
 }
 
-// Description 返回指标描述
-func (m *CommentRatioMetric) Description() string {
-	return "评估代码注释的比例，注释太少不利于维护，太多则可能表明代码逻辑不清晰"
+// Analyze 实现指标接口分析方法
+func (m *CommentRatioMetric) Analyze(parseResult parser.ParseResult) MetricResult {
+	// 直接从解析结果获取注释信息
+	totalLines := parseResult.GetTotalLines()
+	commentLines := parseResult.GetCommentLines()
+
+	// 计算注释覆盖率
+	commentRatio := 0.0
+	if totalLines > 0 {
+		commentRatio = float64(commentLines) / float64(totalLines)
+	}
+
+	// 计算得分
+	score := m.calculateScore(commentRatio)
+
+	// 生成问题报告
+	issues := m.generateIssues(parseResult, commentRatio)
+
+	return MetricResult{
+		Score:       score,
+		Issues:      issues,
+		Description: m.Description(),
+		Weight:      m.Weight(),
+	}
 }
 
-// Weight 返回指标权重
-func (m *CommentRatioMetric) Weight() float64 {
-	return 0.1
-}
-
-// Analyze 分析注释比例
-func (m *CommentRatioMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
+// generateIssues 生成注释问题报告
+func (m *CommentRatioMetric) generateIssues(parseResult parser.ParseResult, commentRatio float64) []string {
 	var issues []string
 
-	lines := strings.Split(string(content), "\n")
-	totalLines := len(lines)
-	if totalLines == 0 {
-		return 0.0, issues
+	// 基于注释率生成基本问题
+	if commentRatio < 0.05 {
+		issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.comment_very_low"), commentRatio*100))
+	} else if commentRatio < 0.1 {
+		issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.comment_low"), commentRatio*100))
 	}
 
-	commentMap := m.buildCommentMap(file, fileSet)
-	commentLines := len(commentMap)
-	commentRatio := float64(commentLines) / float64(totalLines)
-
-	score := m.evaluateCommentRatio(commentRatio, &issues)
-	return score, issues
-}
-
-// buildCommentMap 构建注释行映射
-func (m *CommentRatioMetric) buildCommentMap(file *ast.File, fileSet *token.FileSet) map[int]bool {
-	commentMap := make(map[int]bool)
-	for _, cg := range file.Comments {
-		for _, comment := range cg.List {
-			pos := fileSet.Position(comment.Pos())
-			commentLines := strings.Count(comment.Text, "\n") + 1
-			for i := 0; i < commentLines; i++ {
-				commentMap[pos.Line+i] = true
-			}
+	// 对于Go语言，检查导出函数/类型是否有注释
+	if parseResult.GetLanguage() == common.Go {
+		file, _, _ := ExtractGoAST(parseResult)
+		if file != nil {
+			m.checkGoExportedComments(file, &issues)
 		}
 	}
-	return commentMap
+
+	return issues
 }
 
-// evaluateCommentRatio 评估注释比例并生成问题列表
-func (m *CommentRatioMetric) evaluateCommentRatio(commentRatio float64, issues *[]string) float64 {
-	if commentRatio < 0.05 {
-		*issues = append(*issues, fmt.Sprintf("代码注释率过低 (%.1f%%)，难以维护", commentRatio*100))
-		return 0.9 // 严重问题
-	} else if commentRatio < 0.1 {
-		*issues = append(*issues, fmt.Sprintf("代码注释率较低 (%.1f%%)，建议增加注释", commentRatio*100))
-		return 0.7 // 中度问题
-	} else if commentRatio > 0.5 {
-		*issues = append(*issues, fmt.Sprintf("注释率过高 (%.1f%%)，可能表明代码本身不够清晰", commentRatio*100))
-		return 0.6 // 轻度问题
-	} else if commentRatio >= 0.1 && commentRatio <= 0.3 {
-		return 0.0 // 良好比例
-	} else {
-		// 0.3-0.5 的注释率，得分在 0.0-0.3 之间
-		return (commentRatio - 0.3) / 0.2 * 0.3
+// checkGoExportedComments 检查Go源码中导出的函数和类型是否有注释
+func (m *CommentRatioMetric) checkGoExportedComments(file *ast.File, issues *[]string) {
+	ast.Inspect(file, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncDecl:
+			if node.Name.IsExported() && !m.hasDocComment(node.Doc) {
+				*issues = append(*issues, fmt.Sprintf(
+					m.translator.Translate("issue.exported_func_no_comment"),
+					node.Name.Name,
+				))
+			}
+		case *ast.GenDecl:
+			for _, spec := range node.Specs {
+				if typeSpec, ok := spec.(*ast.TypeSpec); ok &&
+					typeSpec.Name.IsExported() &&
+					!m.hasDocComment(node.Doc) {
+					*issues = append(*issues, fmt.Sprintf(
+						m.translator.Translate("issue.exported_type_no_comment"),
+						typeSpec.Name.Name,
+					))
+				}
+			}
+		}
+		return true
+	})
+}
+
+// hasDocComment 检查是否有文档注释
+func (m *CommentRatioMetric) hasDocComment(commentGroup *ast.CommentGroup) bool {
+	return commentGroup != nil && len(commentGroup.List) > 0
+}
+
+// calculateScore 根据注释覆盖率计算得分
+func (m *CommentRatioMetric) calculateScore(ratio float64) float64 {
+	switch {
+	case ratio >= 0.2:
+		return 0.0 // 注释充足
+	case ratio >= 0.15:
+		return 0.2 // 注释较好
+	case ratio >= 0.1:
+		return 0.5 // 注释一般
+	case ratio >= 0.05:
+		return 0.8 // 注释较少
+	default:
+		return 1.0 // 几乎没有注释
 	}
 }

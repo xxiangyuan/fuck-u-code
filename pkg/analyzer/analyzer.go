@@ -1,205 +1,378 @@
-// Package analyzer 提供代码质量分析功能
+// Package analyzer 提供代码分析功能
+// 创建者：Done-0
+// 创建时间：2023-10-01
 package analyzer
 
 import (
 	"fmt"
-	"go/parser"
-	"go/token"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/Done-0/fuck-u-code/pkg/common"
+	"github.com/Done-0/fuck-u-code/pkg/i18n"
 	"github.com/Done-0/fuck-u-code/pkg/metrics"
+	"github.com/Done-0/fuck-u-code/pkg/parser"
 )
 
-// AnalysisResult 表示分析结果
+// Analyzer 代码分析器接口
+type Analyzer interface {
+	// Analyze 分析指定路径的代码
+	Analyze(path string) (*AnalysisResult, error)
+
+	// AnalyzeFile 分析单个文件
+	AnalyzeFile(filePath string) (*AnalysisResult, error)
+
+	// AnalyzeWithExcludes 使用指定的包含/排除模式分析目录
+	AnalyzeWithExcludes(path string, includePatterns []string, excludePatterns []string) (*AnalysisResult, error)
+
+	// SetLanguage 设置分析器使用的语言
+	SetLanguage(lang i18n.Language)
+}
+
+// AnalysisResult 分析结果
 type AnalysisResult struct {
-	TotalFiles       int
-	TotalLines       int
-	CodeQualityScore float64
-	Metrics          map[string]MetricResult
-	FilesAnalyzed    []FileAnalysisResult
+	CodeQualityScore float64                 // 代码质量得分
+	Metrics          map[string]MetricResult // 各项指标结果
+	FilesAnalyzed    []FileAnalysisResult    // 分析的文件结果
+	TotalFiles       int                     // 总文件数
+	TotalLines       int                     // 总代码行数
 }
 
-// FileAnalysisResult 表示单文件分析结果
-type FileAnalysisResult struct {
-	FilePath     string
-	FileScore    float64
-	MetricScores map[string]float64
-	Issues       []string
-	Lines        int
-}
-
-// MetricResult 表示指标结果
+// MetricResult 指标结果
 type MetricResult struct {
-	Name        string
-	Score       float64
-	Description string
-	Weight      float64
+	Name        string  // 指标名称
+	Score       float64 // 得分(0-1，越高越差)
+	Description string  // 描述
+	Weight      float64 // 权重
 }
 
-// Analyzer 代码分析器
-type Analyzer struct {
-	metrics []metrics.Metric
+// FileAnalysisResult 文件分析结果
+type FileAnalysisResult struct {
+	FilePath  string   // 文件路径
+	FileScore float64  // 文件得分
+	Issues    []string // 问题列表
 }
 
-// NewAnalyzer 创建新的分析器
-func NewAnalyzer() *Analyzer {
-	return &Analyzer{
-		metrics: []metrics.Metric{
-			metrics.NewCyclomaticComplexityMetric(),
-			metrics.NewFunctionLengthMetric(),
-			metrics.NewCommentRatioMetric(),
-			metrics.NewErrorHandlingMetric(),
-			metrics.NewNamingConventionMetric(),
-			metrics.NewCodeDuplicationMetric(),
-		},
+// DefaultAnalyzer 默认分析器实现
+type DefaultAnalyzer struct {
+	codeAnalyzer *CodeAnalyzer
+	translator   i18n.Translator
+}
+
+// NewAnalyzer 创建新的代码分析器
+func NewAnalyzer() Analyzer {
+	translator := i18n.NewTranslator(i18n.ZhCN)
+	return &DefaultAnalyzer{
+		codeAnalyzer: NewCodeAnalyzer(translator),
+		translator:   translator,
 	}
 }
 
-// Analyze 分析代码目录
-func (a *Analyzer) Analyze(path string) (*AnalysisResult, error) {
-	result := &AnalysisResult{
-		Metrics:       make(map[string]MetricResult),
-		FilesAnalyzed: []FileAnalysisResult{},
-	}
+// SetLanguage 设置分析器使用的语言
+func (a *DefaultAnalyzer) SetLanguage(lang i18n.Language) {
+	a.translator = i18n.NewTranslator(lang)
+	a.codeAnalyzer.SetTranslator(a.translator)
+}
 
-	err := filepath.WalkDir(path, func(filePath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// 只分析Go文件
-		if !d.IsDir() && strings.HasSuffix(filePath, ".go") {
-			fileResult, err := a.analyzeFile(filePath)
-			if err != nil {
-				return err
-			}
-
-			result.FilesAnalyzed = append(result.FilesAnalyzed, *fileResult)
-			result.TotalFiles++
-		}
-
-		return nil
-	})
-
+// Analyze 分析指定路径的代码
+func (a *DefaultAnalyzer) Analyze(path string) (*AnalysisResult, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("遍历项目失败: %w", err)
+		return nil, fmt.Errorf(a.translator.Translate("error.path_not_accessible"), err)
 	}
 
-	a.calculateOverallScore(result)
-	return result, nil
+	if info.IsDir() {
+		return a.AnalyzeWithExcludes(path, nil, []string{"*/vendor/*", "*/node_modules/*", "*/.git/*"})
+	}
+
+	return a.AnalyzeFile(path)
 }
 
 // AnalyzeFile 分析单个文件
-func (a *Analyzer) AnalyzeFile(filePath string) (*AnalysisResult, error) {
+func (a *DefaultAnalyzer) AnalyzeFile(filePath string) (*AnalysisResult, error) {
+	// 使用内部的CodeAnalyzer分析文件
+	fileResult, err := a.codeAnalyzer.AnalyzeFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换为AnalysisResult
+	result := &AnalysisResult{
+		CodeQualityScore: fileResult.GetOverallScore(),
+		Metrics:          make(map[string]MetricResult),
+		FilesAnalyzed:    make([]FileAnalysisResult, 0, 1),
+		TotalFiles:       1,
+		TotalLines:       fileResult.TotalLines,
+	}
+
+	// 添加指标结果
+	for name, metricResult := range fileResult.MetricResults {
+		result.Metrics[name] = MetricResult{
+			Name:        name,
+			Score:       metricResult.Score,
+			Description: metricResult.Description,
+			Weight:      metricResult.Weight,
+		}
+	}
+
+	// 添加文件分析结果
+	result.FilesAnalyzed = append(result.FilesAnalyzed, FileAnalysisResult{
+		FilePath:  filePath,
+		FileScore: fileResult.GetOverallScore(),
+		Issues:    fileResult.GetIssues(),
+	})
+
+	return result, nil
+}
+
+// AnalyzeWithExcludes 使用指定的排除模式分析目录
+func (a *DefaultAnalyzer) AnalyzeWithExcludes(path string, includePatterns []string, excludePatterns []string) (*AnalysisResult, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf(a.translator.Translate("error.path_not_accessible"), err)
+	}
+
+	if !info.IsDir() {
+		return a.AnalyzeFile(path)
+	}
+
+	// 显示文件搜索进度
+	fmt.Printf("🔍 %s\n", a.translator.Translate("analyzer.searching_files"))
+
+	var lastFoundCount int
+	progressCallback := func(found int) {
+		if found > lastFoundCount {
+			fmt.Printf("\r📂 %s: %d", a.translator.Translate("analyzer.files_found"), found)
+			lastFoundCount = found
+		}
+	}
+
+	// 分析目录中的所有文件
+	fileResults, err := a.codeAnalyzer.AnalyzeDirectory(path, includePatterns, excludePatterns, progressCallback)
+	if err != nil {
+		return nil, err
+	}
+
+	// 清除进度显示
+	if lastFoundCount > 0 {
+		fmt.Printf("\r%s\r", strings.Repeat(" ", 50))
+	}
+
+	// 创建结果对象
 	result := &AnalysisResult{
 		Metrics:       make(map[string]MetricResult),
-		FilesAnalyzed: []FileAnalysisResult{},
+		FilesAnalyzed: make([]FileAnalysisResult, 0, len(fileResults)),
+		TotalFiles:    len(fileResults),
 	}
 
-	fileResult, err := a.analyzeFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("分析文件失败: %w", err)
+	// 收集所有指标结果
+	allMetrics := make(map[string][]metrics.MetricResult)
+	totalLines := 0
+
+	// 处理每个文件的结果
+	for _, fileResult := range fileResults {
+		totalLines += fileResult.TotalLines
+
+		// 添加文件分析结果
+		result.FilesAnalyzed = append(result.FilesAnalyzed, FileAnalysisResult{
+			FilePath:  fileResult.FilePath,
+			FileScore: fileResult.GetOverallScore(),
+			Issues:    fileResult.GetIssues(),
+		})
+
+		// 收集各指标结果
+		for name, metricResult := range fileResult.MetricResults {
+			if _, ok := allMetrics[name]; !ok {
+				allMetrics[name] = make([]metrics.MetricResult, 0, len(fileResults))
+			}
+			allMetrics[name] = append(allMetrics[name], metricResult)
+		}
 	}
 
-	result.FilesAnalyzed = append(result.FilesAnalyzed, *fileResult)
-	result.TotalFiles = 1
+	// 计算各指标的平均分数
+	for name, metricResults := range allMetrics {
+		if len(metricResults) == 0 {
+			continue
+		}
 
-	a.calculateOverallScore(result)
+		// 计算平均分
+		totalScore := 0.0
+		totalWeight := 0.0
+		description := ""
+
+		for _, m := range metricResults {
+			totalScore += m.Score
+			totalWeight = m.Weight
+			description = m.Description
+		}
+
+		avgScore := totalScore / float64(len(metricResults))
+
+		// 添加到结果中
+		result.Metrics[name] = MetricResult{
+			Name:        name,
+			Score:       avgScore,
+			Description: description,
+			Weight:      totalWeight,
+		}
+	}
+
+	// 设置总行数
+	result.TotalLines = totalLines
+
+	// 计算总体评分
+	result.CodeQualityScore = a.codeAnalyzer.CalculateOverallScore(fileResults)
+
 	return result, nil
 }
 
-// analyzeFile 分析单个文件的内部实现
-func (a *Analyzer) analyzeFile(filePath string) (*FileAnalysisResult, error) {
-	fileSet := token.NewFileSet()
+// CodeAnalyzer 代码分析器
+type CodeAnalyzer struct {
+	metricFactory *metrics.MetricFactory
+	translator    i18n.Translator
+}
+
+// NewCodeAnalyzer 创建新的代码分析器
+func NewCodeAnalyzer(translator i18n.Translator) *CodeAnalyzer {
+	metricFactory := metrics.NewMetricFactory(translator)
+	return &CodeAnalyzer{
+		metricFactory: metricFactory,
+		translator:    translator,
+	}
+}
+
+// SetTranslator 设置翻译器
+func (a *CodeAnalyzer) SetTranslator(translator i18n.Translator) {
+	a.translator = translator
+	a.metricFactory.SetTranslator(translator)
+}
+
+// GetMetrics 获取所有指标
+func (a *CodeAnalyzer) GetMetrics() []metrics.Metric {
+	return a.metricFactory.CreateAllMetrics()
+}
+
+// AnalyzeFile 分析单个文件
+func (a *CodeAnalyzer) AnalyzeFile(filePath string) (*metrics.AnalysisResult, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("读取文件失败: %w", err)
+		return nil, fmt.Errorf(a.translator.Translate("error.file_read_failed"), filePath, err)
 	}
 
-	astFile, err := parser.ParseFile(fileSet, filePath, content, parser.ParseComments)
+	// 创建适合该文件的解析器
+	codeParser := parser.CreateParserForFile(filePath)
+
+	// 解析代码
+	parseResult, err := codeParser.Parse(filePath, content)
 	if err != nil {
-		return nil, fmt.Errorf("解析文件失败: %w", err)
+		return nil, fmt.Errorf(a.translator.Translate("error.code_parse_failed"), filePath, err)
 	}
 
-	result := &FileAnalysisResult{
-		FilePath:     filePath,
-		MetricScores: make(map[string]float64),
-		Issues:       []string{},
+	// 创建分析结果对象
+	result := metrics.NewAnalysisResult(filePath, parseResult)
+
+	// 应用每个指标进行分析
+	for _, metric := range a.GetMetrics() {
+		if !a.isLanguageSupported(metric, parseResult.GetLanguage()) {
+			continue
+		}
+
+		metricResult := metric.Analyze(parseResult)
+		result.AddMetricResult(metric.Name(), metricResult)
 	}
 
-	// 计算文件行数
-	lines := strings.Split(string(content), "\n")
-	result.Lines = len(lines)
-
-	// 应用每个指标
-	for _, metric := range a.metrics {
-		score, issues := metric.Analyze(astFile, fileSet, content)
-		result.MetricScores[metric.Name()] = score
-		result.Issues = append(result.Issues, issues...)
-	}
-
-	result.FileScore = a.calculateFileScore(result.MetricScores)
 	return result, nil
 }
 
-// calculateFileScore 计算文件总得分
-func (a *Analyzer) calculateFileScore(metricScores map[string]float64) float64 {
-	var totalScore float64
-	var totalWeight float64
-
-	for _, metric := range a.metrics {
-		totalScore += metricScores[metric.Name()] * metric.Weight()
-		totalWeight += metric.Weight()
+// isLanguageSupported 检查指标是否支持指定语言
+func (a *CodeAnalyzer) isLanguageSupported(metric metrics.Metric, language common.LanguageType) bool {
+	supportedLanguages := metric.SupportedLanguages()
+	if len(supportedLanguages) == 0 {
+		return true // 支持所有语言
 	}
 
-	if totalWeight == 0 {
-		return 0
+	for _, lang := range supportedLanguages {
+		if lang == language {
+			return true
+		}
 	}
-	return totalScore / totalWeight
+
+	return false
 }
 
-// calculateOverallScore 计算整体得分
-func (a *Analyzer) calculateOverallScore(result *AnalysisResult) {
-	metricScores := make(map[string]float64)
-	metricCounts := make(map[string]int)
-
-	// 汇总每个指标的总分和文件行数
-	for _, file := range result.FilesAnalyzed {
-		for name, score := range file.MetricScores {
-			metricScores[name] += score
-			metricCounts[name]++
-		}
-		result.TotalLines += file.Lines
+// AnalyzeDirectory 分析目录
+func (a *CodeAnalyzer) AnalyzeDirectory(dirPath string, includePatterns []string, excludePatterns []string, progressCallback func(found int)) ([]*metrics.AnalysisResult, error) {
+	// 查找所有符合条件的文件
+	files, err := common.FindSourceFiles(dirPath, includePatterns, excludePatterns, progressCallback)
+	if err != nil {
+		return nil, fmt.Errorf(a.translator.Translate("error.source_files_not_found"), err)
 	}
 
-	// 计算每个指标的平均分
-	totalScore := 0.0
-	totalWeight := 0.0
+	// 使用并发加速分析
+	results := make([]*metrics.AnalysisResult, 0, len(files))
+	resultsChan := make(chan *metrics.AnalysisResult, len(files))
+	errChan := make(chan error, len(files))
 
-	for _, metric := range a.metrics {
-		name := metric.Name()
-		count := metricCounts[name]
+	// 并发控制
+	concurrencyLimit := min(8, len(files)) // 最大并发数
+	semaphore := make(chan struct{}, concurrencyLimit)
+	var wg sync.WaitGroup
 
-		if count > 0 {
-			avgScore := metricScores[name] / float64(count)
+	for _, file := range files {
+		wg.Add(1)
+		go func(filePath string) {
+			defer wg.Done()
 
-			result.Metrics[name] = MetricResult{
-				Name:        name,
-				Score:       avgScore,
-				Description: metric.Description(),
-				Weight:      metric.Weight(),
+			// 获取信号量
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			result, err := a.AnalyzeFile(filePath)
+			if err != nil {
+				errChan <- fmt.Errorf(a.translator.Translate("error.file_analysis_failed"), filePath, err)
+				return
 			}
-
-			totalScore += avgScore * metric.Weight()
-			totalWeight += metric.Weight()
-		}
+			resultsChan <- result
+		}(file)
 	}
 
-	// 最终分数 (0-100)，越高表示代码越"屎山"
-	if totalWeight > 0 {
-		result.CodeQualityScore = (totalScore / totalWeight) * 100
+	// 等待所有分析完成
+	wg.Wait()
+	close(resultsChan)
+	close(errChan)
+
+	// 收集结果
+	for result := range resultsChan {
+		results = append(results, result)
 	}
+
+	// 检查错误
+	for err := range errChan {
+		fmt.Fprintf(os.Stderr, a.translator.Translate("warning.format"), err)
+	}
+
+	return results, nil
+}
+
+// CalculateOverallScore 计算总体评分
+func (a *CodeAnalyzer) CalculateOverallScore(results []*metrics.AnalysisResult) float64 {
+	if len(results) == 0 {
+		return 0.0
+	}
+
+	totalScore := 0.0
+	for _, result := range results {
+		totalScore += result.GetOverallScore()
+	}
+
+	return totalScore / float64(len(results))
+}
+
+// min 返回两个整数中较小的一个
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

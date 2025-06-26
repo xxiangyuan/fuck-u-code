@@ -4,139 +4,173 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strings"
+
+	"github.com/Done-0/fuck-u-code/pkg/common"
 )
 
-// ErrorHandlingMetric 评估代码错误处理情况
-type ErrorHandlingMetric struct{}
+// ErrorHandlingMetric 检测错误处理情况
+type ErrorHandlingMetric struct {
+	*BaseMetric
+}
 
 // NewErrorHandlingMetric 创建错误处理指标
 func NewErrorHandlingMetric() *ErrorHandlingMetric {
-	return &ErrorHandlingMetric{}
+	return &ErrorHandlingMetric{
+		BaseMetric: NewBaseMetric(
+			"错误处理",
+			"检测代码中的错误处理情况，良好的错误处理能提高代码的健壮性",
+			0.15,
+			[]common.LanguageType{common.Go},
+		),
+	}
 }
 
-// Name 返回指标名称
-func (m *ErrorHandlingMetric) Name() string {
-	return "错误处理"
-}
-
-// Description 返回指标描述
-func (m *ErrorHandlingMetric) Description() string {
-	return "评估代码中错误处理的完整性和合理性"
-}
-
-// Weight 返回指标权重
-func (m *ErrorHandlingMetric) Weight() float64 {
-	return 0.2
-}
-
-// Analyze 分析错误处理情况
+// Analyze 分析错误处理
 func (m *ErrorHandlingMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
 	var issues []string
 
-	// 记录各种错误处理情况
-	var (
-		totalErrorProducingCalls int // 产生错误的函数调用总数
-		handledErrors            int // 被正确处理的错误数
-		ignoredErrors            int // 被忽略的错误数
-		blankIdentErrors         int // 使用_忽略的错误数
-	)
+	// 错误处理统计
+	errorReturns := 0
+	ignoredErrors := 0
 
-	// 查找赋值语句中的错误处理
+	// 遍历所有函数
 	ast.Inspect(file, func(n ast.Node) bool {
-		assignStmt, ok := n.(*ast.AssignStmt)
-		if !ok || len(assignStmt.Lhs) == 0 || len(assignStmt.Rhs) == 0 {
-			return true
-		}
+		switch node := n.(type) {
+		case *ast.FuncType:
+			// 检查函数是否返回error
+			if m.returnsError(node) {
+				errorReturns++
+			}
 
-		// 检查多返回值函数调用，最后一个返回值是error
-		_, isCall := assignStmt.Rhs[0].(*ast.CallExpr)
-		if isCall && len(assignStmt.Lhs) >= 2 {
-			lastExpr := assignStmt.Lhs[len(assignStmt.Lhs)-1]
+		case *ast.AssignStmt:
+			// 检查是否忽略了错误
+			if m.isIgnoringError(node) {
+				pos := fileSet.Position(node.Pos())
+				issues = append(issues, fmt.Sprintf("行 %d: 忽略了可能的错误返回值", pos.Line))
+				ignoredErrors++
+			}
 
-			if ident, ok := lastExpr.(*ast.Ident); ok {
-				switch ident.Name {
-				case "_":
-					totalErrorProducingCalls++
-					blankIdentErrors++
-					pos := fileSet.Position(assignStmt.Pos())
-					issues = append(issues, fmt.Sprintf("行 %d: 使用_忽略了错误返回值", pos.Line))
-				case "err", "error":
-					totalErrorProducingCalls++
-					handledErrors++ // 暂时认为被赋值给变量就是处理了
-				}
+		case *ast.ExprStmt:
+			// 检查是否直接调用了可能返回错误的函数但未处理错误
+			if m.isUnhandledErrorCall(node) {
+				pos := fileSet.Position(node.Pos())
+				issues = append(issues, fmt.Sprintf("行 %d: 未处理函数可能返回的错误", pos.Line))
+				ignoredErrors++
 			}
 		}
 		return true
 	})
 
-	// 查找单独的函数调用表达式中可能忽略的错误
-	ast.Inspect(file, func(n ast.Node) bool {
-		exprStmt, ok := n.(*ast.ExprStmt)
-		if !ok {
-			return true
-		}
-
-		call, ok := exprStmt.X.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-
-		// 检查是否可能是返回error却没有检查的函数
-		if m.isPotentialErrorReturningFunc(call) {
-			totalErrorProducingCalls++
-			ignoredErrors++
-			pos := fileSet.Position(exprStmt.Pos())
-			issues = append(issues, fmt.Sprintf("行 %d: 忽略了可能的错误返回值", pos.Line))
-		}
-		return true
-	})
-
-	if totalErrorProducingCalls == 0 {
+	// 如果没有函数返回错误，则不评分
+	if errorReturns == 0 {
 		return 0.0, issues
 	}
 
-	// 计算错误处理率和得分
-	errorHandlingRate := float64(handledErrors) / float64(totalErrorProducingCalls)
-	return m.calculateScore(errorHandlingRate), issues
+	// 计算错误处理得分
+	score := m.calculateScore(ignoredErrors, errorReturns)
+	return score, issues
 }
 
-// isPotentialErrorReturningFunc 检查函数调用是否可能返回error
-func (m *ErrorHandlingMetric) isPotentialErrorReturningFunc(call *ast.CallExpr) bool {
-	fun, ok := call.Fun.(*ast.SelectorExpr)
+// returnsError 检查函数是否返回error
+func (m *ErrorHandlingMetric) returnsError(funcType *ast.FuncType) bool {
+	if funcType.Results == nil {
+		return false
+	}
+
+	for _, field := range funcType.Results.List {
+		if m.isErrorType(field.Type) {
+			return true
+		}
+	}
+	return false
+}
+
+// isErrorType 检查类型是否为error
+func (m *ErrorHandlingMetric) isErrorType(expr ast.Expr) bool {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name == "error"
+	case *ast.SelectorExpr:
+		if ident, ok := t.X.(*ast.Ident); ok {
+			return ident.Name == "errors" || ident.Name == "fmt" || ident.Name == "io"
+		}
+	}
+	return false
+}
+
+// isIgnoringError 检查是否忽略了错误
+func (m *ErrorHandlingMetric) isIgnoringError(assign *ast.AssignStmt) bool {
+	// 查找 _ 变量
+	for i, lhs := range assign.Lhs {
+		if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "_" {
+			// 检查对应的右值是否可能是错误
+			if i < len(assign.Rhs) {
+				if callExpr, ok := assign.Rhs[0].(*ast.CallExpr); ok {
+					return m.callMayReturnError(callExpr)
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// isUnhandledErrorCall 检查是否有未处理的错误调用
+func (m *ErrorHandlingMetric) isUnhandledErrorCall(stmt *ast.ExprStmt) bool {
+	callExpr, ok := stmt.X.(*ast.CallExpr)
 	if !ok {
 		return false
 	}
 
-	// 检查包名
-	if x, ok := fun.X.(*ast.Ident); ok {
-		// 一些常见的可能返回error的包
-		if x.Name == "os" || x.Name == "ioutil" || x.Name == "io" ||
-			x.Name == "net" || x.Name == "http" {
-			return true
-		}
-	}
-
-	// 检查常见的返回error的方法名
-	methodName := fun.Sel.Name
-	return methodName == "Open" || methodName == "Close" ||
-		methodName == "Read" || methodName == "Write" ||
-		methodName == "ReadFile" || methodName == "WriteFile" ||
-		methodName == "Stat" || methodName == "Connect" ||
-		methodName == "Dial"
+	// 检查一些常见可能返回错误但经常被忽略的函数
+	return m.callMayReturnError(callExpr)
 }
 
-// calculateScore 根据错误处理率计算得分
-func (m *ErrorHandlingMetric) calculateScore(errorHandlingRate float64) float64 {
+// callMayReturnError 检查调用是否可能返回错误
+func (m *ErrorHandlingMetric) callMayReturnError(callExpr *ast.CallExpr) bool {
+	if selExpr, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
+		if ident, ok := selExpr.X.(*ast.Ident); ok {
+			// 检查一些常见可能返回错误的包和方法
+			pkgMethod := fmt.Sprintf("%s.%s", ident.Name, selExpr.Sel.Name)
+			errorProneMethods := []string{
+				"os.Create", "os.Open", "os.Remove", "os.Rename", "os.Mkdir", "os.MkdirAll",
+				"io.Write", "io.Read", "io.Copy",
+				"json.Marshal", "json.Unmarshal",
+				"ioutil.ReadFile", "ioutil.WriteFile",
+				"http.Get", "http.Post", "http.Do",
+				"sql.Open", "sql.Exec", "sql.Query",
+			}
+
+			for _, method := range errorProneMethods {
+				if strings.HasSuffix(pkgMethod, method) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// calculateScore 计算错误处理得分
+func (m *ErrorHandlingMetric) calculateScore(ignoredErrors, totalErrorReturns int) float64 {
+	if totalErrorReturns == 0 {
+		return 0.0
+	}
+
+	// 计算忽略错误的比例
+	ignoredRatio := float64(ignoredErrors) / float64(totalErrorReturns)
+
 	switch {
-	case errorHandlingRate >= 0.9:
-		return 0.0 // 几乎所有错误都被处理，最佳情况
-	case errorHandlingRate >= 0.7:
-		return (1.0 - errorHandlingRate) * 0.5 // 0.7-0.9 -> 0.15-0.0
-	case errorHandlingRate >= 0.5:
-		return 0.15 + (0.7-errorHandlingRate)/0.2*0.35 // 0.5-0.7 -> 0.5-0.15
-	case errorHandlingRate >= 0.3:
-		return 0.5 + (0.5-errorHandlingRate)/0.2*0.3 // 0.3-0.5 -> 0.8-0.5
+	case ignoredRatio == 0:
+		return 0.0 // 完美处理所有错误
+	case ignoredRatio <= 0.2:
+		return ignoredRatio * 2 // 0.0-0.4
+	case ignoredRatio <= 0.5:
+		return 0.4 + (ignoredRatio-0.2)/0.3*0.3 // 0.4-0.7
+	case ignoredRatio <= 0.8:
+		return 0.7 + (ignoredRatio-0.5)/0.3*0.2 // 0.7-0.9
 	default:
-		return 0.8 + (0.3-errorHandlingRate)/0.3*0.2 // 0.0-0.3 -> 1.0-0.8
+		return 0.9 + (ignoredRatio-0.8)/0.2*0.1 // 0.9-1.0
 	}
 }

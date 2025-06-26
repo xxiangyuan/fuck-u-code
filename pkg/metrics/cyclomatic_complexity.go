@@ -4,55 +4,114 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strings"
+
+	"github.com/Done-0/fuck-u-code/pkg/i18n"
+	"github.com/Done-0/fuck-u-code/pkg/parser"
 )
 
 // CyclomaticComplexityMetric 计算代码的循环复杂度
-type CyclomaticComplexityMetric struct{}
+type CyclomaticComplexityMetric struct {
+	*BaseMetric
+	translator i18n.Translator
+}
 
 // NewCyclomaticComplexityMetric 创建循环复杂度指标
-func NewCyclomaticComplexityMetric() *CyclomaticComplexityMetric {
-	return &CyclomaticComplexityMetric{}
+func NewCyclomaticComplexityMetric() Metric {
+	translator := i18n.NewTranslator(i18n.ZhCN) // 默认使用中文
+	return &CyclomaticComplexityMetric{
+		BaseMetric: NewBaseMetric(
+			i18n.FormatKey("metric", "cyclomatic_complexity"),
+			translator.Translate("metric.cyclomatic_complexity.description"),
+			0.25,
+			nil, // 支持所有语言
+		),
+		translator: translator,
+	}
 }
 
-// Name 返回指标名称
-func (m *CyclomaticComplexityMetric) Name() string {
-	return "循环复杂度"
+// SetTranslator 设置翻译器
+func (m *CyclomaticComplexityMetric) SetTranslator(translator i18n.Translator) {
+	m.translator = translator
+	m.name = translator.Translate(i18n.FormatKey("metric", "cyclomatic_complexity"))
 }
 
-// Description 返回指标描述
-func (m *CyclomaticComplexityMetric) Description() string {
-	return "测量函数的控制流复杂度，复杂度越高，代码越难理解和测试"
+// Analyze 实现指标接口分析方法
+func (m *CyclomaticComplexityMetric) Analyze(parseResult parser.ParseResult) MetricResult {
+	file, _, content := ExtractGoAST(parseResult)
+
+	// 如果content为空，使用解析结果获取
+	if len(content) == 0 {
+		contentStr := ""
+		for i := 0; i < parseResult.GetTotalLines(); i++ {
+			contentStr += "\n"
+		}
+		content = []byte(contentStr)
+	}
+
+	score, issues := m.analyzeComplexity(file, content, parseResult)
+
+	return MetricResult{
+		Score:       score,
+		Issues:      issues,
+		Description: m.Description(),
+		Weight:      m.Weight(),
+	}
 }
 
-// Weight 返回指标权重
-func (m *CyclomaticComplexityMetric) Weight() float64 {
-	return 0.25
-}
-
-// Analyze 分析代码的循环复杂度
-func (m *CyclomaticComplexityMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
+// analyzeComplexity 分析代码的循环复杂度
+func (m *CyclomaticComplexityMetric) analyzeComplexity(file *ast.File, content []byte, parseResult parser.ParseResult) (float64, []string) {
 	var issues []string
 	funcCount := 0
 	totalComplexity := 0
 
-	ast.Inspect(file, func(n ast.Node) bool {
-		funcDecl, ok := n.(*ast.FuncDecl)
-		if !ok {
+	// 对于Go语言使用AST分析
+	if file != nil {
+		ast.Inspect(file, func(n ast.Node) bool {
+			funcDecl, ok := n.(*ast.FuncDecl)
+			if !ok {
+				return true
+			}
+
+			funcName := funcDecl.Name.Name
+			complexity := m.calculateComplexity(funcDecl)
+			funcCount++
+			totalComplexity += complexity
+
+			if complexity > 15 {
+				issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.high_complexity"), funcName, complexity))
+			} else if complexity > 10 {
+				issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.medium_complexity"), funcName, complexity))
+			}
 			return true
+		})
+	} else {
+		// 使用解析结果中的函数信息
+		functions := parseResult.GetFunctions()
+		for _, function := range functions {
+			funcCount++
+			totalComplexity += function.Complexity
+
+			if function.Complexity > 15 {
+				issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.high_complexity"), function.Name, function.Complexity))
+			} else if function.Complexity > 10 {
+				issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.medium_complexity"), function.Name, function.Complexity))
+			}
 		}
 
-		funcName := funcDecl.Name.Name
-		complexity := m.calculateComplexity(funcDecl)
-		funcCount++
-		totalComplexity += complexity
+		// 如果没有函数信息，则使用基于文本的分析
+		if funcCount == 0 {
+			complexity := m.calculateTextBasedComplexity(string(content))
+			funcCount = 1
+			totalComplexity = complexity
 
-		if complexity > 15 {
-			issues = append(issues, fmt.Sprintf("函数 %s 的循环复杂度过高 (%d)，考虑重构", funcName, complexity))
-		} else if complexity > 10 {
-			issues = append(issues, fmt.Sprintf("函数 %s 的循环复杂度较高 (%d)，建议简化", funcName, complexity))
+			if complexity > 100 {
+				issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.file_high_complexity"), complexity))
+			} else if complexity > 50 {
+				issues = append(issues, fmt.Sprintf(m.translator.Translate("issue.file_medium_complexity"), complexity))
+			}
 		}
-		return true
-	})
+	}
 
 	if funcCount == 0 {
 		return 0.0, issues
@@ -62,7 +121,7 @@ func (m *CyclomaticComplexityMetric) Analyze(file *ast.File, fileSet *token.File
 	return m.calculateScore(avgComplexity), issues
 }
 
-// calculateComplexity 计算函数的复杂度
+// calculateComplexity 计算Go函数的复杂度
 func (m *CyclomaticComplexityMetric) calculateComplexity(funcDecl *ast.FuncDecl) int {
 	complexity := 1
 
@@ -81,6 +140,26 @@ func (m *CyclomaticComplexityMetric) calculateComplexity(funcDecl *ast.FuncDecl)
 		}
 		return true
 	})
+
+	return complexity
+}
+
+// calculateTextBasedComplexity 基于文本内容简单估算复杂度
+func (m *CyclomaticComplexityMetric) calculateTextBasedComplexity(content string) int {
+	complexity := 1
+
+	// 常见控制结构关键字
+	controlKeywords := []string{
+		"if", "for", "while", "switch", "case",
+		"catch", "&&", "||", "?", "foreach",
+		"elif", "except", "try", "else if",
+	}
+
+	// 简单统计关键字出现次数
+	for _, keyword := range controlKeywords {
+		count := strings.Count(content, keyword)
+		complexity += count
+	}
 
 	return complexity
 }
