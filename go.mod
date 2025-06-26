@@ -1,15 +1,11 @@
 module github.com/Done-0/fuck-u-code
 
-go 1.20
+go 1.23
 
 require (
-	// Python解析
 	github.com/alecthomas/participle/v2 v2.0.0
 	github.com/fatih/color v1.15.0
-	// JavaScript/TypeScript解析
 	github.com/robertkrimen/otto v0.2.1
-	// C/C++解析
-	github.com/smacker/go-tree-sitter v0.0.0-20230720070738-0d0a9f78d8f8
 	github.com/spf13/cobra v1.7.0
 )
 

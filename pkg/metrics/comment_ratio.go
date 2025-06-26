@@ -120,14 +120,20 @@ func (m *CommentRatioMetric) hasDocComment(commentGroup *ast.CommentGroup) bool 
 // calculateScore 根据注释覆盖率计算得分
 func (m *CommentRatioMetric) calculateScore(ratio float64) float64 {
 	switch {
+	case ratio >= 0.25:
+		return 0.0 // 注释非常充足
 	case ratio >= 0.2:
-		return 0.0 // 注释充足
+		return 0.1 // 注释充足
 	case ratio >= 0.15:
-		return 0.2 // 注释较好
+		return 0.25 // 注释较好
 	case ratio >= 0.1:
-		return 0.5 // 注释一般
+		return 0.45 // 注释一般
+	case ratio >= 0.07:
+		return 0.65 // 注释较少
 	case ratio >= 0.05:
-		return 0.8 // 注释较少
+		return 0.8 // 注释很少
+	case ratio >= 0.02:
+		return 0.9 // 注释极少
 	default:
 		return 1.0 // 几乎没有注释
 	}

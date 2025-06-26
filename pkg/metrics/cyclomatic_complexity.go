@@ -167,17 +167,23 @@ func (m *CyclomaticComplexityMetric) calculateTextBasedComplexity(content string
 // calculateScore 根据平均复杂度计算得分
 func (m *CyclomaticComplexityMetric) calculateScore(avgComplexity float64) float64 {
 	switch {
+	case avgComplexity <= 3:
+		return 0.0 // 非常简单清晰
 	case avgComplexity <= 5:
-		return 0.0
+		return 0.15 // 简单清晰
+	case avgComplexity <= 7:
+		return 0.3 // 较为简单
 	case avgComplexity <= 10:
-		return (avgComplexity - 5) / 5 * 0.5 // 5-10 -> 0.0-0.5
+		return 0.45 // 复杂度可接受
+	case avgComplexity <= 15:
+		return 0.6 // 有一定复杂度
 	case avgComplexity <= 20:
-		return 0.5 + (avgComplexity-10)/10*0.3 // 10-20 -> 0.5-0.8
+		return 0.75 // 复杂度较高
+	case avgComplexity <= 25:
+		return 0.85 // 复杂度高
+	case avgComplexity <= 30:
+		return 0.95 // 复杂度非常高
 	default:
-		score := 0.8 + (avgComplexity-20)/10*0.2 // >20 -> 0.8-1.0
-		if score > 1.0 {
-			score = 1.0
-		}
-		return score
+		return 1.0 // 极其复杂
 	}
 }

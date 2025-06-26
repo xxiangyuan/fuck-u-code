@@ -3,10 +3,7 @@ package metrics
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"strings"
-
-	"github.com/Done-0/fuck-u-code/pkg/common"
 )
 
 // StructureAnalysisMetric 分析代码结构，检测乱嵌套乱引用
@@ -14,20 +11,8 @@ type StructureAnalysisMetric struct {
 	*BaseMetric
 }
 
-// NewStructureAnalysisMetric 创建代码结构分析指标
-func NewStructureAnalysisMetric() *StructureAnalysisMetric {
-	return &StructureAnalysisMetric{
-		BaseMetric: NewBaseMetric(
-			"代码结构",
-			"检测代码的嵌套深度和引用复杂度，评估结构清晰度",
-			0.2,
-			[]common.LanguageType{common.Go},
-		),
-	}
-}
-
 // Analyze 分析代码结构
-func (m *StructureAnalysisMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
+func (m *StructureAnalysisMetric) Analyze(file *ast.File) (float64, []string) {
 	var issues []string
 
 	// 分析嵌套深度
@@ -172,34 +157,54 @@ func (m *StructureAnalysisMetric) analyzeImportComplexity(file *ast.File) []stri
 
 // calculateScore 计算结构得分
 func (m *StructureAnalysisMetric) calculateScore(nestingDepth, circularCount, importIssueCount int) float64 {
-	// 嵌套深度评分
 	nestingScore := 0.0
-	if nestingDepth <= 2 {
-		nestingScore = 0.0
-	} else if nestingDepth <= 3 {
-		nestingScore = 0.2
-	} else if nestingDepth <= 4 {
-		nestingScore = 0.4
-	} else if nestingDepth <= 5 {
-		nestingScore = 0.6
-	} else if nestingDepth <= 6 {
-		nestingScore = 0.8
-	} else {
-		nestingScore = 1.0
+	switch {
+	case nestingDepth <= 1:
+		nestingScore = 0.0 // 极佳结构
+	case nestingDepth == 2:
+		nestingScore = 0.15 // 优秀结构
+	case nestingDepth == 3:
+		nestingScore = 0.3 // 良好结构
+	case nestingDepth == 4:
+		nestingScore = 0.45 // 一般结构
+	case nestingDepth == 5:
+		nestingScore = 0.6 // 稍差结构
+	case nestingDepth == 6:
+		nestingScore = 0.75 // 较差结构
+	case nestingDepth <= 8:
+		nestingScore = 0.85 // 差结构
+	case nestingDepth <= 10:
+		nestingScore = 0.95 // 极差结构
+	default:
+		nestingScore = 1.0 // 不可接受结构
 	}
 
-	// 循环引用评分
-	circularScore := float64(circularCount) * 0.2
-	if circularScore > 1.0 {
+	circularScore := 0.0
+	switch {
+	case circularCount == 0:
+		circularScore = 0.0
+	case circularCount == 1:
+		circularScore = 0.3
+	case circularCount == 2:
+		circularScore = 0.6
+	case circularCount == 3:
+		circularScore = 0.8
+	default:
 		circularScore = 1.0
 	}
 
-	// 导入复杂度评分
-	importScore := float64(importIssueCount) * 0.2
-	if importScore > 1.0 {
+	importScore := 0.0
+	switch {
+	case importIssueCount == 0:
+		importScore = 0.0
+	case importIssueCount == 1:
+		importScore = 0.4
+	case importIssueCount == 2:
+		importScore = 0.7
+	default:
 		importScore = 1.0
 	}
 
 	// 综合评分
-	return (nestingScore*0.5 + circularScore*0.3 + importScore*0.2)
+	return nestingScore*0.6 + circularScore*0.25 + importScore*0.15
 }

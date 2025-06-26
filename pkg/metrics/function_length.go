@@ -3,6 +3,7 @@
 package metrics
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -42,7 +43,6 @@ func (m *FunctionLengthMetric) SetTranslator(translator i18n.Translator) {
 func (m *FunctionLengthMetric) Analyze(parseResult parser.ParseResult) MetricResult {
 	file, fileSet, content := ExtractGoAST(parseResult)
 
-	// 如果content为空，使用解析结果获取
 	if len(content) == 0 {
 		content = []byte(strings.Repeat("\n", parseResult.GetTotalLines()))
 	}
@@ -61,7 +61,6 @@ func (m *FunctionLengthMetric) Analyze(parseResult parser.ParseResult) MetricRes
 func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.FileSet, content []byte, parseResult parser.ParseResult) (float64, []string) {
 	var issues []string
 
-	// 使用解析器获取的函数信息
 	functions := parseResult.GetFunctions()
 	if len(functions) == 0 {
 		return 0.0, issues
@@ -69,6 +68,8 @@ func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.F
 
 	totalComplexity := 0
 	longFunctions := 0
+	veryLongFunctions := 0
+	extremeLongFunctions := 0
 	totalFunctions := len(functions)
 
 	// 分析每个函数
@@ -76,23 +77,37 @@ func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.F
 		lineCount := fn.EndLine - fn.StartLine + 1
 
 		// 检查函数长度
-		if lineCount > 50 {
-			issues = append(issues, fmt.Sprintf("函数 '%s' 过长 (%d 行)，建议拆分", fn.Name, lineCount))
-			longFunctions++
+		if lineCount > 100 {
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 极度过长 (%d 行)，必须拆分", fn.Name, locationInfo, lineCount))
+			extremeLongFunctions++
+		} else if lineCount > 50 {
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 过长 (%d 行)，建议拆分", fn.Name, locationInfo, lineCount))
+			veryLongFunctions++
 		} else if lineCount > 30 {
-			issues = append(issues, fmt.Sprintf("函数 '%s' 较长 (%d 行)，可考虑重构", fn.Name, lineCount))
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 较长 (%d 行)，可考虑重构", fn.Name, locationInfo, lineCount))
 			longFunctions++
 		}
 
 		// 检查函数复杂度
 		totalComplexity += fn.Complexity
-		if fn.Complexity > 10 {
-			issues = append(issues, fmt.Sprintf("函数 '%s' 复杂度过高 (%d)，建议简化", fn.Name, fn.Complexity))
+		if fn.Complexity > 15 {
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 复杂度严重过高 (%d)，必须简化", fn.Name, locationInfo, fn.Complexity))
+		} else if fn.Complexity > 10 {
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 复杂度过高 (%d)，建议简化", fn.Name, locationInfo, fn.Complexity))
 		}
 
 		// 检查参数数量
-		if fn.Parameters > 5 {
-			issues = append(issues, fmt.Sprintf("函数 '%s' 参数过多 (%d 个)，建议使用结构体封装", fn.Name, fn.Parameters))
+		if fn.Parameters > 7 {
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 参数极多 (%d 个)，必须使用结构体封装", fn.Name, locationInfo, fn.Parameters))
+		} else if fn.Parameters > 5 {
+			locationInfo := m.getLocationInfo(fn, fileSet, content)
+			issues = append(issues, fmt.Sprintf("函数 '%s'%s 参数过多 (%d 个)，建议使用结构体封装", fn.Name, locationInfo, fn.Parameters))
 		}
 	}
 
@@ -101,24 +116,58 @@ func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.F
 		stateIssues, stateScore := m.analyzeStateManagement(file)
 		issues = append(issues, stateIssues...)
 
-		// 综合得分，函数长度占 60%，状态管理占 40%
-		longFunctionRatio := float64(longFunctions) / float64(totalFunctions)
-		avgComplexity := float64(totalComplexity) / float64(totalFunctions) / 10.0
-		if avgComplexity > 1.0 {
-			avgComplexity = 1.0
+		longRatio := float64(longFunctions) / float64(totalFunctions)
+		veryLongRatio := float64(veryLongFunctions) / float64(totalFunctions)
+		extremeLongRatio := float64(extremeLongFunctions) / float64(totalFunctions)
+
+		// 加权计算函数长度评分，对更长的函数给予更高权重
+		lengthScore := longRatio*0.3 + veryLongRatio*0.5 + extremeLongRatio*0.8
+		if lengthScore > 1.0 {
+			lengthScore = 1.0
 		}
 
-		return longFunctionRatio*0.4 + avgComplexity*0.2 + stateScore*0.4, issues
+		// 精细计算复杂度得分
+		avgComplexity := float64(totalComplexity) / float64(totalFunctions)
+		complexityScore := m.calculateComplexityScore(avgComplexity)
+
+		// 综合得分，函数长度占 50%，复杂度占 20%，状态管理占 30%
+		return lengthScore*0.5 + complexityScore*0.2 + stateScore*0.3, issues
 	}
 
 	// 对于非 Go 语言或无法进行 AST 分析的情况，使用简化评分
-	longFunctionRatio := float64(longFunctions) / float64(totalFunctions)
-	avgComplexity := float64(totalComplexity) / float64(totalFunctions) / 10.0
-	if avgComplexity > 1.0 {
-		avgComplexity = 1.0
+	longRatio := float64(longFunctions) / float64(totalFunctions)
+	veryLongRatio := float64(veryLongFunctions) / float64(totalFunctions)
+	extremeLongRatio := float64(extremeLongFunctions) / float64(totalFunctions)
+
+	// 加权计算函数长度评分，对更长的函数给予更高权重
+	lengthScore := longRatio*0.3 + veryLongRatio*0.5 + extremeLongRatio*0.8
+	if lengthScore > 1.0 {
+		lengthScore = 1.0
 	}
 
-	return longFunctionRatio*0.6 + avgComplexity*0.4, issues
+	// 精细计算复杂度得分
+	avgComplexity := float64(totalComplexity) / float64(totalFunctions)
+	complexityScore := m.calculateComplexityScore(avgComplexity)
+
+	return lengthScore*0.7 + complexityScore*0.3, issues
+}
+
+// calculateComplexityScore 根据平均复杂度计算得分
+func (m *FunctionLengthMetric) calculateComplexityScore(avgComplexity float64) float64 {
+	switch {
+	case avgComplexity <= 3:
+		return 0.0 // 极简复杂度
+	case avgComplexity <= 5:
+		return 0.2 // 简单复杂度
+	case avgComplexity <= 7:
+		return 0.4 // 适中复杂度
+	case avgComplexity <= 10:
+		return 0.6 // 较高复杂度
+	case avgComplexity <= 15:
+		return 0.8 // 高复杂度
+	default:
+		return 1.0 // 极高复杂度
+	}
 }
 
 // analyzeStateManagement 分析状态变量管理
@@ -209,4 +258,27 @@ func (m *FunctionLengthMetric) analyzeStateManagement(file *ast.File) ([]string,
 type stateVarInfo struct {
 	isGlobal  bool
 	isMutable bool
+}
+
+// getLocationInfo 获取函数位置的更详细信息
+func (m *FunctionLengthMetric) getLocationInfo(fn parser.Function, fileSet *token.FileSet, content []byte) string {
+	// 如果有AST节点信息，尝试获取更精确的位置
+	if fn.Node != nil {
+		if node, ok := fn.Node.(ast.Node); ok && fileSet != nil {
+			pos := fileSet.Position(node.Pos())
+			return fmt.Sprintf(" (位于 %s:%d)", pos.Filename, pos.Line)
+		}
+	}
+
+	// 如果有内容，尝试显示函数的第一行
+	if len(content) > 0 && fn.StartLine > 0 && fn.StartLine <= len(bytes.Split(content, []byte("\n"))) {
+		lines := bytes.Split(content, []byte("\n"))
+		firstLine := strings.TrimSpace(string(lines[fn.StartLine-1]))
+		if len(firstLine) > 30 {
+			firstLine = firstLine[:30] + "..."
+		}
+		return fmt.Sprintf(" (%s)", firstLine)
+	}
+
+	return ""
 }

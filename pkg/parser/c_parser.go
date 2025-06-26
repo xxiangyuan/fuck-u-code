@@ -2,13 +2,9 @@
 package parser
 
 import (
-	"context"
 	"strings"
 
 	"github.com/Done-0/fuck-u-code/pkg/common"
-	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/c"
-	"github.com/smacker/go-tree-sitter/cpp"
 )
 
 // CParser C/C++语言解析器
@@ -38,32 +34,7 @@ func (p *CParser) Parse(filePath string, content []byte) (ParseResult, error) {
 	// 计算注释行数
 	result.CommentLines = p.countCommentLines(contentStr)
 
-	// 创建适合的解析器
-	var parser *sitter.Parser
-	var treeSitterLang *sitter.Language
-
-	if language == common.CPlusPlus {
-		treeSitterLang = cpp.GetLanguage()
-	} else {
-		treeSitterLang = c.GetLanguage()
-	}
-
-	parser = sitter.NewParser()
-	parser.SetLanguage(treeSitterLang)
-
-	// 解析代码
-	tree, err := parser.ParseCtx(context.TODO(), nil, []byte(contentStr))
-	if err != nil {
-		result.Functions = p.detectFunctions(contentStr, lines)
-		return result, nil
-	}
-
-	// 保存AST根节点
-	result.ASTRoot = tree.RootNode()
-
-	// 提取函数信息
-	p.extractFunctions(tree.RootNode(), contentStr, &result.Functions)
-
+	result.Functions = p.detectFunctions(contentStr, lines)
 	return result, nil
 }
 
@@ -167,7 +138,6 @@ func (p *CParser) extractFunctionName(line string) string {
 
 // countParameters 计算函数参数数量
 func (p *CParser) countParameters(line string) int {
-	// 提取括号内的内容
 	start := strings.LastIndex(line, "(")
 	end := strings.LastIndex(line, ")")
 
@@ -219,14 +189,11 @@ func (p *CParser) estimateComplexity(lines []string, startLine, lineCount int) i
 		line := lines[i]
 
 		for _, keyword := range keywords {
-			// 简单统计关键词出现次数
 			count := strings.Count(line, keyword)
 
-			// 确保是独立的关键词，而不是变量名的一部分
 			for j := 0; j < count; j++ {
 				pos := strings.Index(line, keyword)
 				if pos != -1 {
-					// 检查前后是否是标识符的一部分
 					if (pos == 0 || !isAlphaNum(rune(line[pos-1]))) &&
 						(pos+len(keyword) >= len(line) || !isAlphaNum(rune(line[pos+len(keyword)]))) {
 						complexity++
@@ -243,147 +210,4 @@ func (p *CParser) estimateComplexity(lines []string, startLine, lineCount int) i
 // isAlphaNum 检查字符是否是字母、数字或下划线
 func isAlphaNum(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
-}
-
-// extractFunctions 从AST中提取函数信息
-func (p *CParser) extractFunctions(rootNode *sitter.Node, content string, functions *[]Function) {
-	if rootNode == nil {
-		return
-	}
-
-	// 遍历AST查找函数定义
-	cursor := sitter.NewTreeCursor(rootNode)
-	defer cursor.Close()
-
-	if cursor.GoToFirstChild() {
-		for {
-			node := cursor.CurrentNode()
-			if node.Type() == "function_definition" || node.Type() == "method_definition" {
-				function := p.processFunctionNode(node, content)
-				*functions = append(*functions, function)
-			}
-
-			if !cursor.GoToNextSibling() {
-				break
-			}
-		}
-		cursor.GoToParent()
-	}
-}
-
-// processFunctionNode 处理函数节点
-func (p *CParser) processFunctionNode(node *sitter.Node, content string) Function {
-	// 提取函数名
-	var funcName string
-	declarator := node.ChildByFieldName("declarator")
-	if declarator != nil {
-		// 继续深入查找函数名
-		funcName = p.findFunctionName(declarator, content)
-	}
-
-	// 获取行号范围
-	startLine := int(node.StartPoint().Row) + 1
-	endLine := int(node.EndPoint().Row) + 1
-
-	// 计算参数数量
-	params := p.countParametersFromAST(node)
-
-	// 计算复杂度
-	complexity := p.calculateComplexity(node)
-
-	return Function{
-		Name:       funcName,
-		StartLine:  startLine,
-		EndLine:    endLine,
-		Complexity: complexity,
-		Parameters: params,
-		Node:       node,
-	}
-}
-
-// findFunctionName 从AST中提取函数名
-func (p *CParser) findFunctionName(node *sitter.Node, content string) string {
-	if node == nil {
-		return "unknown"
-	}
-
-	// 针对不同语言和节点类型的不同处理
-	if node.Type() == "function_declarator" {
-		declarator := node.ChildByFieldName("declarator")
-		if declarator != nil {
-			return p.findFunctionName(declarator, content)
-		}
-	} else if node.Type() == "identifier" {
-		// 获取标识符文本
-		return content[node.StartByte():node.EndByte()]
-	}
-
-	// 递归查找子节点
-	for i := 0; i < int(node.ChildCount()); i++ {
-		child := node.Child(i)
-		if child.Type() == "identifier" {
-			return content[child.StartByte():child.EndByte()]
-		}
-
-		name := p.findFunctionName(child, content)
-		if name != "unknown" {
-			return name
-		}
-	}
-
-	return "unknown"
-}
-
-// countParametersFromAST 从AST中计算函数参数数量
-func (p *CParser) countParametersFromAST(node *sitter.Node) int {
-	// 寻找参数列表节点
-	var paramNode *sitter.Node
-
-	declarator := node.ChildByFieldName("declarator")
-	if declarator != nil && declarator.Type() == "function_declarator" {
-		paramNode = declarator.ChildByFieldName("parameters")
-	}
-
-	if paramNode == nil {
-		return 0
-	}
-
-	// 计算参数数量
-	count := 0
-	for i := 0; i < int(paramNode.ChildCount()); i++ {
-		child := paramNode.Child(i)
-		if child.Type() == "parameter_declaration" {
-			count++
-		}
-	}
-
-	return count
-}
-
-// calculateComplexity 通过AST计算函数复杂度
-func (p *CParser) calculateComplexity(node *sitter.Node) int {
-	complexity := 1
-
-	// 使用队列进行广度优先搜索
-	queue := []*sitter.Node{node}
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		// 检查节点类型，增加复杂度
-		switch current.Type() {
-		case "if_statement", "for_statement", "while_statement", "do_statement",
-			"case_statement", "catch_statement", "conditional_expression":
-			complexity++
-		}
-
-		// 将所有子节点加入队列
-		for i := 0; i < int(current.ChildCount()); i++ {
-			child := current.Child(i)
-			queue = append(queue, child)
-		}
-	}
-
-	return complexity
 }

@@ -6,8 +6,6 @@ import (
 	"go/token"
 	"strings"
 	"unicode"
-
-	"github.com/Done-0/fuck-u-code/pkg/common"
 )
 
 // NamingConventionMetric 检测命名规范
@@ -15,20 +13,8 @@ type NamingConventionMetric struct {
 	*BaseMetric
 }
 
-// NewNamingConventionMetric 创建命名规范指标
-func NewNamingConventionMetric() *NamingConventionMetric {
-	return &NamingConventionMetric{
-		BaseMetric: NewBaseMetric(
-			"命名规范",
-			"检测代码中的命名规范，良好的命名能提高代码可读性",
-			0.1,
-			[]common.LanguageType{common.Go},
-		),
-	}
-}
-
 // Analyze 分析命名规范
-func (m *NamingConventionMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
+func (m *NamingConventionMetric) Analyze(file *ast.File) (float64, []string) {
 	var issues []string
 
 	// 统计各种命名问题
@@ -208,13 +194,23 @@ func (m *NamingConventionMetric) calculateScore(badRatio float64) float64 {
 	switch {
 	case badRatio == 0:
 		return 0.0 // 完全符合命名规范
+	case badRatio <= 0.05:
+		return 0.15 // 非常接近规范
 	case badRatio <= 0.1:
-		return badRatio * 3 // 0.0-0.3
+		return 0.25 // 基本符合规范
+	case badRatio <= 0.15:
+		return 0.35 // 大部分符合规范
+	case badRatio <= 0.2:
+		return 0.45 // 较多符合规范
 	case badRatio <= 0.3:
-		return 0.3 + (badRatio-0.1)/0.2*0.4 // 0.3-0.7
+		return 0.55 // 部分不符合规范
+	case badRatio <= 0.4:
+		return 0.65 // 较多不符合规范
 	case badRatio <= 0.5:
-		return 0.7 + (badRatio-0.3)/0.2*0.2 // 0.7-0.9
+		return 0.8 // 大部分不符合规范
+	case badRatio <= 0.7:
+		return 0.9 // 几乎不符合规范
 	default:
-		return 0.9 + (badRatio-0.5)/0.5*0.1 // 0.9-1.0
+		return 1.0 // 完全不符合规范
 	}
 }

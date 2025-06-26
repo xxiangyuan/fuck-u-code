@@ -5,8 +5,6 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
-
-	"github.com/Done-0/fuck-u-code/pkg/common"
 )
 
 // ErrorHandlingMetric 检测错误处理情况
@@ -14,20 +12,8 @@ type ErrorHandlingMetric struct {
 	*BaseMetric
 }
 
-// NewErrorHandlingMetric 创建错误处理指标
-func NewErrorHandlingMetric() *ErrorHandlingMetric {
-	return &ErrorHandlingMetric{
-		BaseMetric: NewBaseMetric(
-			"错误处理",
-			"检测代码中的错误处理情况，良好的错误处理能提高代码的健壮性",
-			0.15,
-			[]common.LanguageType{common.Go},
-		),
-	}
-}
-
 // Analyze 分析错误处理
-func (m *ErrorHandlingMetric) Analyze(file *ast.File, fileSet *token.FileSet, content []byte) (float64, []string) {
+func (m *ErrorHandlingMetric) Analyze(file *ast.File, fileSet *token.FileSet) (float64, []string) {
 	var issues []string
 
 	// 错误处理统计
@@ -164,13 +150,21 @@ func (m *ErrorHandlingMetric) calculateScore(ignoredErrors, totalErrorReturns in
 	switch {
 	case ignoredRatio == 0:
 		return 0.0 // 完美处理所有错误
+	case ignoredRatio <= 0.05:
+		return 0.1 // 几乎处理所有错误
+	case ignoredRatio <= 0.1:
+		return 0.2 // 处理了绝大多数错误
 	case ignoredRatio <= 0.2:
-		return ignoredRatio * 2 // 0.0-0.4
-	case ignoredRatio <= 0.5:
-		return 0.4 + (ignoredRatio-0.2)/0.3*0.3 // 0.4-0.7
+		return 0.35 // 处理了大多数错误
+	case ignoredRatio <= 0.3:
+		return 0.5 // 处理了较多错误
+	case ignoredRatio <= 0.4:
+		return 0.65 // 忽略了较多错误
+	case ignoredRatio <= 0.6:
+		return 0.75 // 忽略了大多数错误
 	case ignoredRatio <= 0.8:
-		return 0.7 + (ignoredRatio-0.5)/0.3*0.2 // 0.7-0.9
+		return 0.85 // 几乎忽略所有错误
 	default:
-		return 0.9 + (ignoredRatio-0.8)/0.2*0.1 // 0.9-1.0
+		return 0.95 // 忽略了所有错误
 	}
 }
