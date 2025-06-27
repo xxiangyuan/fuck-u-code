@@ -23,7 +23,7 @@
 ### 1. 从源码安装
 
 ```bash
-go install github.com/Done-0/fuck-u-code@latest
+go install github.com/Done-0/fuck-u-code/cmd/fuck-u-code@latest
 ```
 
 ### 2. 从源码构建
