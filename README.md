@@ -17,6 +17,14 @@
 > [!Note]
 > 满分 100 分，分数越高表示代码质量越差，越像屎山代码。
 > 欢迎各位高分大佬袭榜！
+> 
+> 声明：本项目无需联网，完全基于本地运行，并不会获取到您宝贵的代码，从而带来安全隐患。
+
+## 安利一下
+
+我的 AI 赛博算命网站上线啦！👉 [玄学工坊](https://bazi.site) - https://bazi.site
+
+我的开源博客项目 [Jank](https://github.com/Done-0/Jank) - https://github.com/Done-0/Jank
 
 ## 安装
 
@@ -103,6 +111,6 @@ fuck-u-code analyze --exclude "**/test/**" --exclude "**/legacy/**"
 
 本项目采用 MIT 许可证
 
-## 安利一下
+## 贡献
 
-另一个开源项目 [Jank](https://github.com/Done-0/Jank)
+欢迎提交 PR 为屎山代码检测器贡献您的代码
