@@ -42,6 +42,12 @@ cd fuck-u-code
 go build -o fuck-u-code ./cmd/fuck-u-code
 ```
 
+### 3. 从Docker构建
+
+```bash
+docker build -t fuck-u-code .
+```
+
 ## 使用方法
 
 ### 基本分析
@@ -49,6 +55,12 @@ go build -o fuck-u-code ./cmd/fuck-u-code
 ```bash
 fuck-u-code analyze /path/to/your/project
 # 或者 fuck-u-code /path/to/your/project
+```
+
+从Docker镜像中运行:
+
+```bash
+docker run --rm -v "/path/to/your/project:/build" fuck-u-code analyze
 ```
 
 不指定路径时，默认分析当前目录:
