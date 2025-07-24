@@ -12,6 +12,7 @@
 - **屎山指数评分**: 0~100 分的质量评分系统
 - **全面质量检测**: 七大维度（循环复杂度/函数长度/注释覆盖率/错误处理/命名规范/代码重复度/代码结构）评估代码质量
 - **彩色终端报告**: 让代码审查不再枯燥，让队友笑着接受批评
+- **Markdown输出**: 生成结构化报告，便于AI工具处理和文档集成
 - **灵活配置**: 支持详细模式、摘要模式、自定义报告选项以及多语言输出
 
 > [!Note]
@@ -77,6 +78,7 @@ fuck-u-code analyze
 | `--top N`    | `-t N` | 显示问题最多的前 N 个文件 (默认 5) |
 | `--issues N` | `-i N` | 每个文件显示 N 个问题 (默认 5)     |
 | `--summary`  | `-s`   | 只显示总结结论，不看过程           |
+| `--markdown` | `-m`   | 输出Markdown格式报告，便于AI工具处理 |
 | `--lang`     | `-l`   | 指定输出语言 (zh-CN, en-US)        |
 | `--exclude`  | `-e`   | 排除特定文件/目录模式 (可多次使用) |
 
@@ -97,9 +99,47 @@ fuck-u-code analyze --summary
 
 # 排除特定文件夹
 fuck-u-code analyze --exclude "**/test/**" --exclude "**/legacy/**"
+
+# 输出Markdown格式报告
+fuck-u-code analyze --markdown
+
+# 保存Markdown报告到文件
+fuck-u-code analyze --markdown > report.md
+
+# 生成英文Markdown报告
+fuck-u-code analyze --markdown --lang en-US > english-report.md
 ```
 
 ## 高级用法
+
+### Markdown 输出
+
+使用 `--markdown` 选项可以输出结构化的Markdown格式报告，特别适合：
+
+- **AI工具处理**: 便于ChatGPT、Claude等AI工具分析和提供修复建议
+- **文档集成**: 直接集成到项目文档或Wiki中
+- **CI/CD流程**: 在持续集成中生成代码质量报告
+- **团队协作**: 分享给团队成员进行代码审查
+
+```bash
+# 基本Markdown输出
+fuck-u-code analyze --markdown
+
+# 保存到文件
+fuck-u-code analyze --markdown > code-quality-report.md
+
+# 结合其他选项
+fuck-u-code analyze --markdown --top 10 --lang en-US > detailed-report.md
+
+# 只输出总结（适合概览）
+fuck-u-code analyze --markdown --summary > summary.md
+```
+
+Markdown输出包含：
+- 📊 **总体评估**: 质量评分、等级、文件统计
+- 📋 **质量指标表格**: 各项指标得分和状态
+- 🔍 **问题文件列表**: 按严重程度排序的问题文件
+- 💡 **改进建议**: 按优先级分类的具体建议
 
 ### 分析前端项目
 

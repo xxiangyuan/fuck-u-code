@@ -74,24 +74,32 @@ func (r *Report) SetTranslator(translator i18n.Translator) {
 
 // ReportOptions 定义报告生成的选项
 type ReportOptions struct {
-	Verbose     bool // 是否显示详细报告
-	TopFiles    int  // 显示最差文件的数量
-	MaxIssues   int  // 每个文件显示的问题数量
-	SummaryOnly bool // 是否只显示摘要
+	Verbose        bool // 是否显示详细报告
+	TopFiles       int  // 显示最差文件的数量
+	MaxIssues      int  // 每个文件显示的问题数量
+	SummaryOnly    bool // 是否只显示摘要
+	MarkdownOutput bool // 是否输出Markdown格式
 }
 
 // DefaultReportOptions 默认报告选项
 var DefaultReportOptions = &ReportOptions{
-	Verbose:     false,
-	TopFiles:    3,
-	MaxIssues:   3,
-	SummaryOnly: false,
+	Verbose:        false,
+	TopFiles:       3,
+	MaxIssues:      3,
+	SummaryOnly:    false,
+	MarkdownOutput: false,
 }
 
 // GenerateConsoleReport 生成控制台报告
 func (r *Report) GenerateConsoleReport(options *ReportOptions) {
 	if options == nil {
 		options = DefaultReportOptions
+	}
+
+	// 如果选择Markdown输出，调用Markdown报告生成器
+	if options.MarkdownOutput {
+		r.GenerateMarkdownReport(options)
+		return
 	}
 
 	score := r.result.CodeQualityScore
@@ -833,5 +841,219 @@ func (r *Report) printAllFiles(options *ReportOptions) {
 		if i < maxFilesToShow-1 {
 			fmt.Println()
 		}
+	}
+}
+
+// GenerateMarkdownReport 生成Markdown格式的精简报告
+func (r *Report) GenerateMarkdownReport(options *ReportOptions) {
+	if options == nil {
+		options = DefaultReportOptions
+	}
+
+	score := r.result.CodeQualityScore
+	level := r.getQualityLevel(score)
+
+	// 输出Markdown标题
+	fmt.Printf("# %s\n\n", r.translator.Translate("report.title"))
+
+	// 总体评估部分
+	fmt.Printf("## %s\n\n", r.translator.Translate("report.overall_assessment"))
+	fmt.Printf("- **%s**: %.2f/100\n", r.translator.Translate("report.quality_score"), math.Round(score*10000)/100)
+	fmt.Printf("- **%s**: %s %s - %s\n",
+		r.translator.Translate("report.quality_level"),
+		level.Emoji,
+		r.translator.Translate(level.NameKey),
+		r.translator.Translate(level.Description))
+	fmt.Printf("- **%s**: %d\n", r.translator.Translate("report.analyzed_files"), r.result.TotalFiles)
+	fmt.Printf("- **%s**: %d\n\n", r.translator.Translate("report.total_lines"), r.result.TotalLines)
+
+	// 质量指标表格
+	r.printMarkdownMetricsTable()
+
+	// 问题文件列表
+	if !options.SummaryOnly {
+		r.printMarkdownTopFiles(options)
+	}
+
+	// 改进建议
+	r.printMarkdownAdvice(level)
+}
+
+// printMarkdownMetricsTable 打印质量指标表格
+func (r *Report) printMarkdownMetricsTable() {
+	fmt.Printf("## %s\n\n", r.translator.Translate("report.quality_metrics"))
+
+	// 表格头部
+	fmt.Printf("| %s | %s | %s | %s |\n",
+		r.translator.Translate("report.metric"),
+		r.translator.Translate("report.score"),
+		r.translator.Translate("report.weight"),
+		r.translator.Translate("report.status"))
+	fmt.Println("|------|------|------|------|")
+
+	// 获取排序后的指标
+	metrics := r.getSortedMetrics()
+
+	for _, m := range metrics {
+		scorePercentage := math.Round(m.Score*10000) / 100
+
+		// 确定状态图标
+		var statusEmoji string
+		switch {
+		case scorePercentage < 20:
+			statusEmoji = "✓✓" // 优秀
+		case scorePercentage < 35:
+			statusEmoji = "✓" // 良好
+		case scorePercentage < 50:
+			statusEmoji = "○" // 一般偏好
+		case scorePercentage < 60:
+			statusEmoji = "•" // 一般
+		case scorePercentage < 70:
+			statusEmoji = "⚠" // 一般偏差
+		case scorePercentage < 80:
+			statusEmoji = "!" // 较差
+		case scorePercentage < 90:
+			statusEmoji = "!!" // 差
+		default:
+			statusEmoji = "✗" // 极差
+		}
+
+		fmt.Printf("| %s | %.2f | %.2f | %s |\n",
+			m.Name,
+			scorePercentage,
+			m.Weight,
+			statusEmoji)
+	}
+	fmt.Println()
+}
+
+// printMarkdownTopFiles 打印问题文件列表
+func (r *Report) printMarkdownTopFiles(options *ReportOptions) {
+	fmt.Printf("## %s (Top %d)\n\n", r.translator.Translate("report.problem_files"), options.TopFiles)
+
+	// 获取排序后的文件
+	allFiles := r.getSortedFiles()
+
+	if len(allFiles) == 0 {
+		fmt.Printf("🎉 %s\n\n", r.translator.Translate("report.no_issues"))
+		return
+	}
+
+	maxFiles := min(options.TopFiles, len(allFiles))
+
+	for i := 0; i < maxFiles; i++ {
+		f := allFiles[i]
+
+		fmt.Printf("### %d. %s (%s: %.2f)\n",
+			i+1,
+			f.FilePath,
+			r.translator.Translate("report.score"),
+			math.Round(f.FileScore*10000)/100)
+
+		// 问题分类统计
+		issuesByCategory := r.categorizeIssues(f.Issues)
+		if len(issuesByCategory) > 0 {
+			var categoryParts []string
+
+			categoryInfo := map[string]string{
+				"complexity":  "🔄 " + r.translator.Translate("issue.category.complexity"),
+				"comment":     "📝 " + r.translator.Translate("issue.category.comment"),
+				"naming":      "🏷️ " + r.translator.Translate("issue.category.naming"),
+				"structure":   "🏗️ " + r.translator.Translate("issue.category.structure"),
+				"duplication": "📋 " + r.translator.Translate("issue.category.duplication"),
+				"error":       "❌ " + r.translator.Translate("issue.category.error"),
+				"other":       "⚠️ " + r.translator.Translate("issue.category.other"),
+			}
+
+			categoryOrder := []string{"complexity", "comment", "naming", "structure", "duplication", "error", "other"}
+
+			for _, category := range categoryOrder {
+				if count, exists := issuesByCategory[category]; exists {
+					categoryParts = append(categoryParts, fmt.Sprintf("%s:%d", categoryInfo[category], count))
+				}
+			}
+
+			if len(categoryParts) > 0 {
+				fmt.Printf("**%s**: %s\n\n", r.translator.Translate("report.issue_categories"), strings.Join(categoryParts, ", "))
+			}
+		}
+
+		// 主要问题列表
+		if len(f.Issues) > 0 {
+			fmt.Printf("**%s**:\n", r.translator.Translate("report.main_issues"))
+
+			// 在Markdown模式下显示所有问题，否则限制数量
+			maxIssues := len(f.Issues)
+			if !options.MarkdownOutput {
+				maxIssues = min(options.MaxIssues, len(f.Issues))
+			}
+
+			for j := 0; j < maxIssues; j++ {
+				fmt.Printf("- %s\n", f.Issues[j])
+			}
+
+			// 只在非Markdown模式下显示"更多问题"提示
+			if !options.MarkdownOutput && len(f.Issues) > maxIssues {
+				fmt.Printf("- *...%s %d %s*\n",
+					r.translator.Translate("report.and"),
+					len(f.Issues)-maxIssues,
+					r.translator.Translate("report.more_issues_short"))
+			}
+		}
+
+		fmt.Println()
+	}
+}
+
+// printMarkdownAdvice 打印改进建议
+func (r *Report) printMarkdownAdvice(level struct {
+	MinScore    float64
+	NameKey     string
+	Description string
+	Emoji       string
+}) {
+	fmt.Printf("## %s\n\n", r.translator.Translate("report.improvement_suggestions"))
+
+	// 根据质量等级提供分级建议
+	switch {
+	case level.MinScore < 30:
+		// 代码质量良好
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.high"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.good.maintain"))
+
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.medium"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.good.optimize"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.good.document"))
+
+	case level.MinScore < 60:
+		// 代码质量中等
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.high"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.moderate.refactor"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.moderate.complexity"))
+
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.medium"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.moderate.naming"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.moderate.comments"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.moderate.duplication"))
+
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.low"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.moderate.structure"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.moderate.style"))
+
+	default:
+		// 代码质量较差
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.high"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.bad.urgent_refactor"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.bad.complexity"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.bad.error_handling"))
+
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.medium"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.bad.naming"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.bad.duplication"))
+		fmt.Printf("- %s\n\n", r.translator.Translate("advice.bad.comments"))
+
+		fmt.Printf("### %s\n", r.translator.Translate("advice.priority.low"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.bad.structure"))
+		fmt.Printf("- %s\n", r.translator.Translate("advice.bad.style"))
 	}
 }

@@ -17,13 +17,14 @@ import (
 
 // 全局配置选项
 var (
-	verbose     bool            // 是否输出详细报告
-	topFiles    int             // 问题最多的文件数量
-	maxIssues   int             // 每个文件最多列出的问题数
-	summaryOnly bool            // 是否只显示结论，不看过程
-	language    string          // 输出语言
-	translator  i18n.Translator // 翻译器
-	exclude     []string        // 排除的文件/目录模式
+	verbose        bool            // 是否输出详细报告
+	topFiles       int             // 问题最多的文件数量
+	maxIssues      int             // 每个文件最多列出的问题数
+	summaryOnly    bool            // 是否只显示结论，不看过程
+	markdownOutput bool            // 是否输出Markdown格式
+	language       string          // 输出语言
+	translator     i18n.Translator // 翻译器
+	exclude        []string        // 排除的文件/目录模式
 )
 
 // 默认排除的模式
@@ -128,7 +129,7 @@ func createRootCommand() *cobra.Command {
 			}
 
 			// 运行分析
-			runAnalysis(path, lang, verbose, topFiles, maxIssues, summaryOnly, exclude)
+			runAnalysis(path, lang, verbose, topFiles, maxIssues, summaryOnly, markdownOutput, exclude)
 			return nil
 		},
 	}
@@ -187,6 +188,7 @@ func createAnalyzeCommand() *cobra.Command {
 			topFlag, _ := cmd.Flags().GetInt("top")
 			issuesFlag, _ := cmd.Flags().GetInt("issues")
 			summaryFlag, _ := cmd.Flags().GetBool("summary")
+			markdownFlag, _ := cmd.Flags().GetBool("markdown")
 			excludePatterns, _ := cmd.Flags().GetStringArray("exclude")
 
 			// 设置语言
@@ -199,7 +201,7 @@ func createAnalyzeCommand() *cobra.Command {
 			}
 
 			// 运行分析
-			runAnalysis(path, lang, verboseFlag, topFlag, issuesFlag, summaryFlag, excludePatterns)
+			runAnalysis(path, lang, verboseFlag, topFlag, issuesFlag, summaryFlag, markdownFlag, excludePatterns)
 		},
 	}
 
@@ -209,6 +211,7 @@ func createAnalyzeCommand() *cobra.Command {
 	analyzeCmd.Flags().IntP("top", "t", 5, translator.Translate("cmd.top"))
 	analyzeCmd.Flags().IntP("issues", "i", 5, translator.Translate("cmd.issues"))
 	analyzeCmd.Flags().BoolP("summary", "s", false, translator.Translate("cmd.summary"))
+	analyzeCmd.Flags().BoolP("markdown", "m", false, translator.Translate("cmd.markdown"))
 	analyzeCmd.Flags().StringArrayP("exclude", "e", nil, translator.Translate("cmd.exclude"))
 
 	return analyzeCmd
@@ -340,6 +343,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&topFiles, "top", "t", 5, translator.Translate("cmd.top"))
 	cmd.Flags().IntVarP(&maxIssues, "issues", "i", 5, translator.Translate("cmd.issues"))
 	cmd.Flags().BoolVarP(&summaryOnly, "summary", "s", false, translator.Translate("cmd.summary"))
+	cmd.Flags().BoolVarP(&markdownOutput, "markdown", "m", false, translator.Translate("cmd.markdown"))
 	cmd.Flags().StringArrayVarP(&exclude, "exclude", "e", nil, translator.Translate("cmd.exclude"))
 }
 
@@ -389,6 +393,7 @@ func updateFlagDescriptions(cmd *cobra.Command) {
 		"top":             "cmd.top",
 		"issues":          "cmd.issues",
 		"summary":         "cmd.summary",
+		"markdown":        "cmd.markdown",
 		"exclude":         "cmd.exclude",
 		"help":            "cmd.help_flag",
 		"no-descriptions": "cmd.no_descriptions",
@@ -460,20 +465,23 @@ func updateCompletionCommand(cmd *cobra.Command) {
 }
 
 // runAnalysis 运行代码分析
-func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, maxIssues int, summaryOnly bool, excludePatterns []string) {
+func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, maxIssues int, summaryOnly bool, markdownOutput bool, excludePatterns []string) {
 	// 设置翻译器
 	translator := i18n.NewTranslator(lang)
 
-	// 输出开始分析信息
-	fmt.Printf("🔍 %s\n", translator.Translate("cmd.start_analyzing", path))
+	// 只在非markdown模式下输出分析过程信息
+	if !markdownOutput {
+		// 输出开始分析信息
+		fmt.Printf("🔍 %s\n", translator.Translate("cmd.start_analyzing", path))
 
-	// 如果有排除模式，输出排除模式
-	if len(excludePatterns) > 0 {
-		fmt.Printf("📂 %s\n", translator.Translate("cmd.exclude_patterns"))
-		for _, pattern := range excludePatterns {
-			fmt.Printf("  - %s\n", pattern)
+		// 如果有排除模式，输出排除模式
+		if len(excludePatterns) > 0 {
+			fmt.Printf("📂 %s\n", translator.Translate("cmd.exclude_patterns"))
+			for _, pattern := range excludePatterns {
+				fmt.Printf("  - %s\n", pattern)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	// 添加默认排除模式
@@ -482,6 +490,7 @@ func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, ma
 	// 创建分析器
 	analyzer := analyzer.NewAnalyzer()
 	analyzer.SetLanguage(lang)
+	analyzer.SetSilent(markdownOutput) // 在markdown模式下使用静默模式
 
 	// 分析代码
 	result, err := analyzer.AnalyzeWithExcludes(path, nil, excludePatterns)
@@ -496,10 +505,11 @@ func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, ma
 
 	// 设置报告选项
 	options := &report.ReportOptions{
-		Verbose:     verbose || topFiles > 10,
-		TopFiles:    topFiles,
-		MaxIssues:   maxIssues,
-		SummaryOnly: summaryOnly,
+		Verbose:        verbose || topFiles > 10,
+		TopFiles:       topFiles,
+		MaxIssues:      maxIssues,
+		SummaryOnly:    summaryOnly,
+		MarkdownOutput: markdownOutput,
 	}
 
 	// 生成报告
