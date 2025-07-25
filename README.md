@@ -159,6 +159,14 @@ Markdown输出包含：
 - 生成文件 (generated, migrations)
 - 测试数据 (testdata, test-results)
 
+## 疑难解答
+
+- 在 Linux、Mac 运行时提示`command not found`、`Unknown command`等
+
+  - 这是因为 go 的 bin 目录没有加入到 PATH 中，运行`export PATH="$PATH:$(go env GOPATH)/bin"`后再试
+
+  - 将这条指令加入到 .bash_profile、.zshrc、fish.config 中，就不需要每次打开终端都执行了
+
 ## 许可证
 
 本项目采用 MIT 许可证
