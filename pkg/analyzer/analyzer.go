@@ -28,6 +28,9 @@ type Analyzer interface {
 
 	// SetLanguage 设置分析器使用的语言
 	SetLanguage(lang i18n.Language)
+
+	// SetSilent 设置静默模式
+	SetSilent(silent bool)
 }
 
 // AnalysisResult 分析结果
@@ -58,6 +61,7 @@ type FileAnalysisResult struct {
 type DefaultAnalyzer struct {
 	codeAnalyzer *CodeAnalyzer
 	translator   i18n.Translator
+	silent       bool // 静默模式，不输出进度信息
 }
 
 // NewAnalyzer 创建新的代码分析器
@@ -73,6 +77,11 @@ func NewAnalyzer() Analyzer {
 func (a *DefaultAnalyzer) SetLanguage(lang i18n.Language) {
 	a.translator = i18n.NewTranslator(lang)
 	a.codeAnalyzer.SetTranslator(a.translator)
+}
+
+// SetSilent 设置静默模式
+func (a *DefaultAnalyzer) SetSilent(silent bool) {
+	a.silent = silent
 }
 
 // Analyze 分析指定路径的代码
@@ -137,15 +146,21 @@ func (a *DefaultAnalyzer) AnalyzeWithExcludes(path string, includePatterns []str
 		return a.AnalyzeFile(path)
 	}
 
-	// 显示文件搜索进度
-	fmt.Printf("🔍 %s\n", a.translator.Translate("analyzer.searching_files"))
-
+	// 只在非静默模式下显示文件搜索进度
 	var lastFoundCount int
-	progressCallback := func(found int) {
-		if found > lastFoundCount {
-			fmt.Printf("\r📂 %s: %d", a.translator.Translate("analyzer.files_found"), found)
-			lastFoundCount = found
+	var progressCallback func(int)
+
+	if !a.silent {
+		fmt.Printf("🔍 %s\n", a.translator.Translate("analyzer.searching_files"))
+		progressCallback = func(found int) {
+			if found > lastFoundCount {
+				fmt.Printf("\r📂 %s: %d", a.translator.Translate("analyzer.files_found"), found)
+				lastFoundCount = found
+			}
 		}
+	} else {
+		// 静默模式下的空回调
+		progressCallback = func(int) {}
 	}
 
 	// 分析目录中的所有文件
@@ -154,8 +169,8 @@ func (a *DefaultAnalyzer) AnalyzeWithExcludes(path string, includePatterns []str
 		return nil, err
 	}
 
-	// 清除进度显示
-	if lastFoundCount > 0 {
+	// 只在非静默模式下清除进度显示
+	if !a.silent && lastFoundCount > 0 {
 		fmt.Printf("\r%s\r", strings.Repeat(" ", 50))
 	}
 

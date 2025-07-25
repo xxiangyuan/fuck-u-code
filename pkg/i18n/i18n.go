@@ -153,6 +153,7 @@ var zhCNMessages = map[string]string{
 	"cmd.top":                        "显示问题最多的文件数量（默认5个）",
 	"cmd.issues":                     "每个文件显示多少条问题（默认5个）",
 	"cmd.summary":                    "只看结论，过程略过",
+	"cmd.markdown":                   "输出Markdown格式的精简报告，便于AI工具处理",
 	"cmd.exclude":                    "排除的文件/目录模式 (可多次使用，默认已排除常见依赖目录)",
 	"cmd.start_analyzing":            "开始嗅探：%s",
 	"cmd.exclude_patterns":           "排除以下文件/目录模式:",
@@ -167,15 +168,31 @@ var zhCNMessages = map[string]string{
 	"cobra.usage":              "用法",
 
 	// 报告
-	"report.title":           "屎山代码分析报告",
-	"report.overall_score":   "总体评分: %.2f / 100",
-	"report.level":           "屎山等级: %s",
-	"report.metrics_details": "评分指标详情",
-	"report.worst_files":     "最屎代码排行榜",
-	"report.conclusion":      "诊断结论",
-	"report.file_score":      "屎气指数: %.2f",
-	"report.more_issues":     "...还有 %d 个问题实在太屎，列不完了",
-	"report.score_calc":      "评分计算: ",
+	"report.title":                   "屎山代码分析报告",
+	"report.overall_score":           "总体评分: %.2f / 100",
+	"report.level":                   "屎山等级: %s",
+	"report.metrics_details":         "评分指标详情",
+	"report.worst_files":             "最屎代码排行榜",
+	"report.conclusion":              "诊断结论",
+	"report.file_score":              "屎气指数: %.2f",
+	"report.more_issues":             "...还有 %d 个问题实在太屎，列不完了",
+	"report.score_calc":              "评分计算: ",
+	"report.overall_assessment":      "总体评估",
+	"report.quality_score":           "质量评分",
+	"report.quality_level":           "质量等级",
+	"report.analyzed_files":          "分析文件数",
+	"report.total_lines":             "代码总行数",
+	"report.quality_metrics":         "质量指标",
+	"report.metric":                  "指标",
+	"report.score":                   "得分",
+	"report.weight":                  "权重",
+	"report.status":                  "状态",
+	"report.problem_files":           "问题文件",
+	"report.issue_categories":        "问题分类",
+	"report.main_issues":             "主要问题",
+	"report.and":                     "还有",
+	"report.more_issues_short":       "个问题",
+	"report.improvement_suggestions": "改进建议",
 
 	// 指标评分后缀
 	"metric.score.suffix": "分",
@@ -219,6 +236,35 @@ var zhCNMessages = map[string]string{
 	"advice.good":     "👍 继续保持，你是编码界的一股清流，代码洁癖者的骄傲",
 	"advice.moderate": "🔧 建议：这代码像个叛逆期的青少年，需要适当管教才能成才",
 	"advice.bad":      "🧨 建议：删库跑路是唯一出路，或者封印它，下辈子再来维护",
+
+	// 改进建议优先级
+	"advice.priority.high":   "高优先级",
+	"advice.priority.medium": "中优先级",
+	"advice.priority.low":    "低优先级",
+
+	// 良好代码的建议
+	"advice.good.maintain": "继续保持当前的代码质量标准",
+	"advice.good.optimize": "可以考虑进一步优化性能和可读性",
+	"advice.good.document": "完善文档和注释，便于团队协作",
+
+	// 中等代码的建议
+	"advice.moderate.refactor":    "重构复杂度过高的函数和模块",
+	"advice.moderate.complexity":  "降低循环复杂度，简化控制流",
+	"advice.moderate.naming":      "改善变量和函数命名规范",
+	"advice.moderate.comments":    "增加代码注释覆盖率",
+	"advice.moderate.duplication": "消除重复代码，提取公共方法",
+	"advice.moderate.structure":   "优化代码结构，减少嵌套层级",
+	"advice.moderate.style":       "统一代码风格和格式",
+
+	// 较差代码的建议
+	"advice.bad.urgent_refactor": "紧急重构过长函数，遵循单一职责原则",
+	"advice.bad.complexity":      "大幅降低循环复杂度，拆分复杂逻辑",
+	"advice.bad.error_handling":  "添加完善的错误处理机制",
+	"advice.bad.naming":          "全面改善命名规范，避免使用无意义变量名",
+	"advice.bad.duplication":     "彻底消除重复代码，建立代码复用机制",
+	"advice.bad.comments":        "大幅增加代码注释，提高可读性",
+	"advice.bad.structure":       "重新设计代码架构，改善整体结构",
+	"advice.bad.style":           "建立并执行严格的代码规范",
 
 	// 指标描述
 	"metric.function_length.description":       "检测代码中状态变量的管理，良好的状态管理能提高代码可维护性和可预测性",
@@ -369,6 +415,7 @@ var enUSMessages = map[string]string{
 	"cmd.top":                        "Show the number of files with the most issues (default 5)",
 	"cmd.issues":                     "How many issues to show for each file (default 5)",
 	"cmd.summary":                    "Show only conclusion, skip the process",
+	"cmd.markdown":                   "Output streamlined Markdown format report, suitable for AI tool processing",
 	"cmd.exclude":                    "Exclude file/directory patterns (can be used multiple times, common dependency directories are excluded by default)",
 	"cmd.start_analyzing":            "Start analyzing: %s",
 	"cmd.exclude_patterns":           "Excluding the following file/directory patterns:",
@@ -383,15 +430,31 @@ var enUSMessages = map[string]string{
 	"cobra.usage":              "Usage",
 
 	// 报告
-	"report.title":           "Code Quality Analysis Report",
-	"report.overall_score":   "Overall Score: %.2f / 100",
-	"report.level":           "Quality Level: %s",
-	"report.metrics_details": "Metrics Details",
-	"report.worst_files":     "Problem Files Ranking",
-	"report.conclusion":      "Conclusion",
-	"report.file_score":      "Issue Score: %.2f",
-	"report.more_issues":     "...and %d more issues",
-	"report.score_calc":      "Score Calculation: ",
+	"report.title":                   "Code Quality Analysis Report",
+	"report.overall_score":           "Overall Score: %.2f / 100",
+	"report.level":                   "Quality Level: %s",
+	"report.metrics_details":         "Metrics Details",
+	"report.worst_files":             "Problem Files Ranking",
+	"report.conclusion":              "Conclusion",
+	"report.file_score":              "Issue Score: %.2f",
+	"report.more_issues":             "...and %d more issues",
+	"report.score_calc":              "Score Calculation: ",
+	"report.overall_assessment":      "Overall Assessment",
+	"report.quality_score":           "Quality Score",
+	"report.quality_level":           "Quality Level",
+	"report.analyzed_files":          "Analyzed Files",
+	"report.total_lines":             "Total Lines",
+	"report.quality_metrics":         "Quality Metrics",
+	"report.metric":                  "Metric",
+	"report.score":                   "Score",
+	"report.weight":                  "Weight",
+	"report.status":                  "Status",
+	"report.problem_files":           "Problem Files",
+	"report.issue_categories":        "Issue Categories",
+	"report.main_issues":             "Main Issues",
+	"report.and":                     "and",
+	"report.more_issues_short":       "more issues",
+	"report.improvement_suggestions": "Improvement Suggestions",
 
 	// 指标评分后缀
 	"metric.score.suffix": " pts",
@@ -435,6 +498,35 @@ var enUSMessages = map[string]string{
 	"advice.good":     "👍 Keep it up, you're a breath of fresh air in the coding world, a clean code champion",
 	"advice.moderate": "🔧 Suggestion: This code is like a rebellious teenager, needs some discipline to reach its potential",
 	"advice.bad":      "🧨 Suggestion: Delete the repo and run, or seal it away for future generations to deal with",
+
+	// 改进建议优先级
+	"advice.priority.high":   "High Priority",
+	"advice.priority.medium": "Medium Priority",
+	"advice.priority.low":    "Low Priority",
+
+	// 良好代码的建议
+	"advice.good.maintain": "Continue maintaining current code quality standards",
+	"advice.good.optimize": "Consider further optimizing performance and readability",
+	"advice.good.document": "Improve documentation and comments for better team collaboration",
+
+	// 中等代码的建议
+	"advice.moderate.refactor":    "Refactor overly complex functions and modules",
+	"advice.moderate.complexity":  "Reduce cyclomatic complexity and simplify control flow",
+	"advice.moderate.naming":      "Improve variable and function naming conventions",
+	"advice.moderate.comments":    "Increase code comment coverage",
+	"advice.moderate.duplication": "Eliminate duplicate code and extract common methods",
+	"advice.moderate.structure":   "Optimize code structure and reduce nesting levels",
+	"advice.moderate.style":       "Unify code style and formatting",
+
+	// 较差代码的建议
+	"advice.bad.urgent_refactor": "Urgently refactor overly long functions, follow single responsibility principle",
+	"advice.bad.complexity":      "Significantly reduce cyclomatic complexity, break down complex logic",
+	"advice.bad.error_handling":  "Add comprehensive error handling mechanisms",
+	"advice.bad.naming":          "Comprehensively improve naming conventions, avoid meaningless variable names",
+	"advice.bad.duplication":     "Thoroughly eliminate duplicate code, establish code reuse mechanisms",
+	"advice.bad.comments":        "Significantly increase code comments to improve readability",
+	"advice.bad.structure":       "Redesign code architecture and improve overall structure",
+	"advice.bad.style":           "Establish and enforce strict coding standards",
 
 	// 指标描述
 	"metric.function_length.description":       "Evaluates state variable management; good state management improves code maintainability and predictability",
