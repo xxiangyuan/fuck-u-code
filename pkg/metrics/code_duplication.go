@@ -76,26 +76,18 @@ func (m *CodeDuplicationMetric) findDuplicatedFunctions(similarFunctions map[str
 
 // calculateScore 根据重复率计算得分
 func (m *CodeDuplicationMetric) calculateScore(duplicationRate float64) float64 {
-	switch {
-	case duplicationRate <= 0.02:
-		return 0.0 // 几乎没有重复
-	case duplicationRate <= 0.05:
-		return 0.2 // 极少重复
-	case duplicationRate <= 0.08:
-		return 0.35 // 很少重复
-	case duplicationRate <= 0.12:
-		return 0.5 // 少量重复
-	case duplicationRate <= 0.16:
-		return 0.65 // 中等重复
-	case duplicationRate <= 0.2:
-		return 0.75 // 较多重复
-	case duplicationRate <= 0.3:
-		return 0.85 // 大量重复
-	case duplicationRate <= 0.4:
-		return 0.95 // 极高重复
-	default:
-		return 1.0 // 过度重复
+	// 基础分0.4，重复率每增加1%增加0.1分
+	baseScore := 0.4
+	increasePerPercent := 10.0
+
+	score := baseScore + (duplicationRate * increasePerPercent)
+
+	// 限制范围
+	if score > 1.0 {
+		return 1.0
 	}
+
+	return score
 }
 
 // extractFunctionSignature 提取函数的特征签名

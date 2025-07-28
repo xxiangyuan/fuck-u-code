@@ -6,15 +6,62 @@ import (
 	"go/token"
 	"strings"
 	"unicode"
+
+	"github.com/Done-0/fuck-u-code/pkg/common"
+	"github.com/Done-0/fuck-u-code/pkg/i18n"
+	"github.com/Done-0/fuck-u-code/pkg/parser"
 )
 
 // NamingConventionMetric 检测命名规范
 type NamingConventionMetric struct {
 	*BaseMetric
+	translator i18n.Translator
 }
 
-// Analyze 分析命名规范
-func (m *NamingConventionMetric) Analyze(file *ast.File) (float64, []string) {
+// NewNamingConventionMetric 创建命名规范指标
+func NewNamingConventionMetric() *NamingConventionMetric {
+	return &NamingConventionMetric{
+		BaseMetric: NewBaseMetric(
+			"命名规范",
+			"检查代码中的命名是否符合规范，包括包名、变量名、函数名、类型名等",
+			0.08,
+			[]common.LanguageType{common.Go},
+		),
+	}
+}
+
+// SetTranslator 设置翻译器
+func (m *NamingConventionMetric) SetTranslator(translator i18n.Translator) {
+	m.translator = translator
+	if translator != nil {
+		m.name = translator.Translate(i18n.FormatKey("metric", "naming_convention"))
+	}
+}
+
+// Analyze 实现指标接口分析方法
+func (m *NamingConventionMetric) Analyze(parseResult parser.ParseResult) MetricResult {
+	file, _, _ := ExtractGoAST(parseResult)
+	if file == nil {
+		return MetricResult{
+			Score:       0.0,
+			Issues:      []string{},
+			Description: m.Description(),
+			Weight:      m.Weight(),
+		}
+	}
+
+	score, issues := m.analyzeNaming(file)
+
+	return MetricResult{
+		Score:       score,
+		Issues:      issues,
+		Description: m.Description(),
+		Weight:      m.Weight(),
+	}
+}
+
+// analyzeNaming 分析命名规范
+func (m *NamingConventionMetric) analyzeNaming(file *ast.File) (float64, []string) {
 	var issues []string
 
 	// 统计各种命名问题
@@ -191,26 +238,16 @@ func (m *NamingConventionMetric) isUpperSnakeCase(name string) bool {
 
 // calculateScore 根据不良命名比例计算得分
 func (m *NamingConventionMetric) calculateScore(badRatio float64) float64 {
-	switch {
-	case badRatio == 0:
-		return 0.0 // 完全符合命名规范
-	case badRatio <= 0.05:
-		return 0.15 // 非常接近规范
-	case badRatio <= 0.1:
-		return 0.25 // 基本符合规范
-	case badRatio <= 0.15:
-		return 0.35 // 大部分符合规范
-	case badRatio <= 0.2:
-		return 0.45 // 较多符合规范
-	case badRatio <= 0.3:
-		return 0.55 // 部分不符合规范
-	case badRatio <= 0.4:
-		return 0.65 // 较多不符合规范
-	case badRatio <= 0.5:
-		return 0.8 // 大部分不符合规范
-	case badRatio <= 0.7:
-		return 0.9 // 几乎不符合规范
-	default:
-		return 1.0 // 完全不符合规范
+	// 础分0.4，每1%不良命名增加0.1分
+	baseScore := 0.4
+	increasePerPercent := 10.0 // 因为badRatio是0-1的比例
+
+	score := baseScore + (badRatio * increasePerPercent)
+
+	// 限制范围
+	if score > 1.0 {
+		return 1.0
 	}
+
+	return score
 }

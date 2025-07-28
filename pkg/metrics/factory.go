@@ -67,12 +67,16 @@ func (f *MetricFactory) CreateCommentRatio() Metric {
 
 // CreateErrorHandling 创建错误处理指标
 func (f *MetricFactory) CreateErrorHandling() Metric {
-	return f.createSimpleMetric("error_handling", 0.15)
+	return f.createSimpleMetric("error_handling", 0.1)
 }
 
 // CreateNamingConvention 创建命名规范指标
 func (f *MetricFactory) CreateNamingConvention() Metric {
-	return f.createSimpleMetric("naming_convention", 0.1)
+	metric := NewNamingConventionMetric()
+	if f.translator != nil {
+		metric.SetTranslator(f.translator)
+	}
+	return metric
 }
 
 // CreateCodeDuplication 创建代码重复度指标
@@ -82,7 +86,7 @@ func (f *MetricFactory) CreateCodeDuplication() Metric {
 
 // CreateStructureAnalysis 创建代码结构分析指标
 func (f *MetricFactory) CreateStructureAnalysis() Metric {
-	return f.createSimpleMetric("structure_analysis", 0.2)
+	return f.createSimpleMetric("structure_analysis", 0.15)
 }
 
 // createSimpleMetric 创建简单指标通用方法
@@ -141,15 +145,15 @@ func (m *SimpleMetric) Analyze(parseResult parser.ParseResult) MetricResult {
 	var score float64
 	switch m.metricKey {
 	case "error_handling":
-		score = 0.35 // 35/100 - 错误处理较好(分数越低越好)
+		score = 0.25
 	case "naming_convention":
-		score = 0.25 // 25/100 - 命名规范良好(分数越低越好)
+		score = 0.15
 	case "code_duplication":
-		score = 0.55 // 55/100 - 代码重复度中等(分数越低越好)
+		score = 0.35
 	case "structure_analysis":
-		score = 0.45 // 45/100 - 代码结构中等偏好(分数越低越好)
+		score = 0.3
 	default:
-		score = 0.5 // 默认50/100
+		score = 0.25
 	}
 
 	return MetricResult{

@@ -23,7 +23,7 @@ func NewCyclomaticComplexityMetric() Metric {
 		BaseMetric: NewBaseMetric(
 			i18n.FormatKey("metric", "cyclomatic_complexity"),
 			translator.Translate("metric.cyclomatic_complexity.description"),
-			0.25,
+			0.3,
 			nil, // 支持所有语言
 		),
 		translator: translator,
@@ -166,24 +166,16 @@ func (m *CyclomaticComplexityMetric) calculateTextBasedComplexity(content string
 
 // calculateScore 根据平均复杂度计算得分
 func (m *CyclomaticComplexityMetric) calculateScore(avgComplexity float64) float64 {
-	switch {
-	case avgComplexity <= 3:
-		return 0.0 // 非常简单清晰
-	case avgComplexity <= 5:
-		return 0.15 // 简单清晰
-	case avgComplexity <= 7:
-		return 0.3 // 较为简单
-	case avgComplexity <= 10:
-		return 0.45 // 复杂度可接受
-	case avgComplexity <= 15:
-		return 0.6 // 有一定复杂度
-	case avgComplexity <= 20:
-		return 0.75 // 复杂度较高
-	case avgComplexity <= 25:
-		return 0.85 // 复杂度高
-	case avgComplexity <= 30:
-		return 0.95 // 复杂度非常高
-	default:
-		return 1.0 // 极其复杂
+	// 基础分0.4，每点复杂度增加0.1分
+	baseScore := 0.4
+	increasePerLevel := 0.1
+
+	score := baseScore + (avgComplexity * increasePerLevel)
+
+	// 限制范围
+	if score > 1.0 {
+		return 1.0
 	}
+
+	return score
 }

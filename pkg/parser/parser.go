@@ -1,6 +1,5 @@
 // Package parser 提供多语言代码解析功能
 // 创建者：Done-0
-// 创建时间：2023-10-01
 package parser
 
 import (

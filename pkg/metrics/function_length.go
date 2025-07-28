@@ -26,7 +26,7 @@ func NewFunctionLengthMetric() *FunctionLengthMetric {
 		BaseMetric: NewBaseMetric(
 			i18n.FormatKey("metric", "function_length"),
 			"检测函数长度及状态变量管理，合理的函数长度和状态管理能提高代码可维护性",
-			0.15,
+			0.2, // 将权重从0.15调整为0.2
 			nil,
 		),
 		translator: translator,
@@ -77,15 +77,15 @@ func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.F
 		lineCount := fn.EndLine - fn.StartLine + 1
 
 		// 检查函数长度
-		if lineCount > 100 {
+		if lineCount > 120 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 极度过长 (%d 行)，必须拆分", fn.Name, locationInfo, lineCount))
 			extremeLongFunctions++
-		} else if lineCount > 50 {
+		} else if lineCount > 70 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 过长 (%d 行)，建议拆分", fn.Name, locationInfo, lineCount))
 			veryLongFunctions++
-		} else if lineCount > 30 {
+		} else if lineCount > 40 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 较长 (%d 行)，可考虑重构", fn.Name, locationInfo, lineCount))
 			longFunctions++
@@ -93,19 +93,19 @@ func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.F
 
 		// 检查函数复杂度
 		totalComplexity += fn.Complexity
-		if fn.Complexity > 15 {
+		if fn.Complexity > 18 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 复杂度严重过高 (%d)，必须简化", fn.Name, locationInfo, fn.Complexity))
-		} else if fn.Complexity > 10 {
+		} else if fn.Complexity > 12 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 复杂度过高 (%d)，建议简化", fn.Name, locationInfo, fn.Complexity))
 		}
 
 		// 检查参数数量
-		if fn.Parameters > 7 {
+		if fn.Parameters > 8 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 参数极多 (%d 个)，必须使用结构体封装", fn.Name, locationInfo, fn.Parameters))
-		} else if fn.Parameters > 5 {
+		} else if fn.Parameters > 6 {
 			locationInfo := m.getLocationInfo(fn, fileSet, content)
 			issues = append(issues, fmt.Sprintf("函数 '%s'%s 参数过多 (%d 个)，建议使用结构体封装", fn.Name, locationInfo, fn.Parameters))
 		}
@@ -154,20 +154,18 @@ func (m *FunctionLengthMetric) analyzeFunctions(file *ast.File, fileSet *token.F
 
 // calculateComplexityScore 根据平均复杂度计算得分
 func (m *FunctionLengthMetric) calculateComplexityScore(avgComplexity float64) float64 {
-	switch {
-	case avgComplexity <= 3:
-		return 0.0 // 极简复杂度
-	case avgComplexity <= 5:
-		return 0.2 // 简单复杂度
-	case avgComplexity <= 7:
-		return 0.4 // 适中复杂度
-	case avgComplexity <= 10:
-		return 0.6 // 较高复杂度
-	case avgComplexity <= 15:
-		return 0.8 // 高复杂度
-	default:
-		return 1.0 // 极高复杂度
+	// 基础分0.4，每点复杂度增加0.1分
+	baseScore := 0.4
+	increasePerLevel := 0.1
+
+	score := baseScore + (avgComplexity * increasePerLevel)
+
+	// 限制范围
+	if score > 1.0 {
+		return 1.0
 	}
+
+	return score
 }
 
 // analyzeStateManagement 分析状态变量管理

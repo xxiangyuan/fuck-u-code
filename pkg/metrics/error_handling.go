@@ -141,30 +141,22 @@ func (m *ErrorHandlingMetric) callMayReturnError(callExpr *ast.CallExpr) bool {
 // calculateScore 计算错误处理得分
 func (m *ErrorHandlingMetric) calculateScore(ignoredErrors, totalErrorReturns int) float64 {
 	if totalErrorReturns == 0 {
-		return 0.0
+		return 0.4
 	}
 
 	// 计算忽略错误的比例
 	ignoredRatio := float64(ignoredErrors) / float64(totalErrorReturns)
 
-	switch {
-	case ignoredRatio == 0:
-		return 0.0 // 完美处理所有错误
-	case ignoredRatio <= 0.05:
-		return 0.1 // 几乎处理所有错误
-	case ignoredRatio <= 0.1:
-		return 0.2 // 处理了绝大多数错误
-	case ignoredRatio <= 0.2:
-		return 0.35 // 处理了大多数错误
-	case ignoredRatio <= 0.3:
-		return 0.5 // 处理了较多错误
-	case ignoredRatio <= 0.4:
-		return 0.65 // 忽略了较多错误
-	case ignoredRatio <= 0.6:
-		return 0.75 // 忽略了大多数错误
-	case ignoredRatio <= 0.8:
-		return 0.85 // 几乎忽略所有错误
-	default:
-		return 0.95 // 忽略了所有错误
+	// 基础分0.4，每1%忽略错误增加0.1分
+	baseScore := 0.4
+	increasePerPercent := 10.0
+
+	score := baseScore + (ignoredRatio * increasePerPercent)
+
+	// 限制范围
+	if score > 1.0 {
+		return 1.0
 	}
+
+	return score
 }

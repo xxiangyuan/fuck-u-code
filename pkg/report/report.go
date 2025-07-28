@@ -1,6 +1,6 @@
 // Package report 提供代码质量分析报告生成功能
 // 创建者：Done-0
-// 创建时间：2023-10-01
+
 package report
 
 import (
@@ -107,11 +107,12 @@ func (r *Report) GenerateConsoleReport(options *ReportOptions) {
 
 	// 打印标题和总体评分
 	printDivider()
-	titleStyle.Printf("\n  %s %s %s\n", level.Emoji, r.translator.Translate("report.title"), level.Emoji)
+	titleStyle.Printf("\n  🌸 %s 🌸\n", r.translator.Translate("report.title"))
 	printDivider()
 
 	fmt.Printf("\n")
-	scoreStyle.Printf("  %s", r.translator.Translate("report.overall_score", math.Round(score*10000)/100))
+	displayScore := score * 100
+	scoreStyle.Printf("  %s", r.translator.Translate("report.overall_score", displayScore))
 	fmt.Printf(" - ")
 	r.printScoreComment(score)
 	fmt.Printf("\n")
@@ -142,7 +143,7 @@ func (r *Report) GenerateConsoleReport(options *ReportOptions) {
 
 // printDivider 打印分隔线
 func printDivider() {
-	fmt.Printf("\n%s\n", strings.Repeat("─", 80))
+	fmt.Printf("%s\n", strings.Repeat("─", 80))
 }
 
 // printMetricItems 打印各项评分指标及简评
@@ -151,6 +152,7 @@ func (r *Report) printMetricItems() {
 
 	metrics := r.getSortedMetrics()
 
+	// 指标结果显示部分
 	maxNameLen := 0
 	for _, m := range metrics {
 		if len(m.Name) > maxNameLen {
@@ -167,9 +169,8 @@ func (r *Report) printMetricItems() {
 	for _, m := range metrics {
 		totalWeight += m.Weight
 		weightedScore += m.Score * m.Weight
-	}
 
-	for _, m := range metrics {
+		// 保持原始分数(0-1，越高越差)，转换为百分比
 		scorePercentage := math.Round(m.Score*10000) / 100
 
 		// 确定状态图标和颜色
@@ -203,7 +204,7 @@ func (r *Report) printMetricItems() {
 			statusColor = dangerStyle
 		}
 
-		// 格式化分数
+		// 格式化分数 - 使用原始百分比
 		scoreStr := fmt.Sprintf("%.2f%s", scorePercentage, r.translator.Translate("metric.score.suffix"))
 
 		statusColor.Printf(nameFormat, statusEmoji, m.Name)
@@ -223,14 +224,14 @@ func (r *Report) printMetricItems() {
 				infoStyle.Printf(" + ")
 			}
 
+			// 使用原始百分比
 			scorePercentage := math.Round(m.Score*10000) / 100
 			infoStyle.Printf("%.2f×%.2f", scorePercentage, m.Weight)
 
 			first = false
 		}
 
-		// 计算公式的第二部分
-		overallScore := math.Round(weightedScore/totalWeight*10000) / 100
+		overallScore := (weightedScore / totalWeight) * 100
 		infoStyle.Printf(") ÷ %.2f = %.2f\n\n", totalWeight, overallScore)
 	}
 }
@@ -360,7 +361,7 @@ func (r *Report) printTopIssues(options *ReportOptions) {
 		fmt.Printf("  ")
 		numberStyle.Printf("%d. ", i+1)
 		fileStyle.Printf("%-*s", maxPathLen+2, shortenPath(f.FilePath))
-		fileScoreColor.Printf("(%s)\n", r.translator.Translate("report.file_score", math.Round(f.FileScore*10000)/100))
+		fileScoreColor.Printf("(%s)\n", r.translator.Translate("report.file_score", math.Round(adjustFileScore(f.FileScore)*100)/100))
 
 		issuesByCategory := r.categorizeIssues(f.Issues)
 
@@ -548,7 +549,7 @@ func (r *Report) printSummary(level struct {
 	sectionStyle.Printf("\n◆ %s\n\n", r.translator.Translate("report.conclusion"))
 
 	// 使用levelStyle打印等级名称和表情符号
-	fmt.Printf("  %s ", level.Emoji)
+	fmt.Printf("  🌸 ")
 	levelStyle.Printf("%s", r.translator.Translate(level.NameKey))
 	detailStyle.Printf(" - %s\n\n", r.translator.Translate(level.Description))
 
@@ -671,6 +672,23 @@ func (r *Report) getTotalIssues() int {
 	return total
 }
 
+// 调整屎气指数分数
+func adjustFileScore(score float64) float64 {
+	// 使用纯线性映射将0-1分数映射到0-100分数
+
+	// 确保分数在0-1范围内
+	normalizedScore := score
+	if normalizedScore > 1.0 {
+		normalizedScore = 1.0
+	}
+	if normalizedScore < 0.0 {
+		normalizedScore = 0.0
+	}
+
+	// 直接映射到0-100
+	return normalizedScore * 100.0
+}
+
 // getScoreColor 根据得分返回对应的颜色
 func getScoreColor(score float64) *color.Color {
 	switch {
@@ -703,6 +721,8 @@ func (r *Report) printAllFiles(options *ReportOptions) {
 		return
 	}
 
+	// 不再需要进度条，因为文件分析过程中已经显示了进度
+
 	// 计算文件路径最大长度，用于对齐
 	maxPathLen := 0
 	for _, file := range files {
@@ -729,14 +749,13 @@ func (r *Report) printAllFiles(options *ReportOptions) {
 		fmt.Printf("  ")
 		numberStyle.Printf("%d. ", i+1)
 		fileStyle.Printf("%-*s", maxPathLen+2, shortenPath(f.FilePath))
-		fileScoreColor.Printf("(%s)\n", r.translator.Translate("report.file_score", math.Round(f.FileScore*10000)/100))
+		fileScoreColor.Printf("(%s)\n", r.translator.Translate("report.file_score", adjustFileScore(f.FileScore)))
 
 		// 分类统计问题
 		issuesByCategory := r.categorizeIssues(f.Issues)
 
-		// 打印问题分类统计 - 使用更紧凑美观的布局
+		// 打印问题分类统计
 		if len(issuesByCategory) > 0 {
-			// 定义优雅的颜色组合和图标
 			categoryInfo := map[string]struct {
 				Color *color.Color
 				Icon  string
@@ -753,14 +772,11 @@ func (r *Report) printAllFiles(options *ReportOptions) {
 			// 定义问题类别的显示顺序
 			categoryOrder := []string{"complexity", "comment", "naming", "structure", "duplication", "error", "other"}
 
-			// 创建一个紧凑的类别统计字符串
 			var categories []string
 			for _, category := range categoryOrder {
 				if count, exists := issuesByCategory[category]; exists {
-					// 使用字符串构建器创建每个类别的显示
 					var categoryStr strings.Builder
 
-					// 使用颜色写入图标和类别名称
 					info := categoryInfo[category]
 					categoryStr.WriteString(info.Icon)
 					categoryStr.WriteString(r.translator.Translate("issue.category." + category))
@@ -791,15 +807,12 @@ func (r *Report) printAllFiles(options *ReportOptions) {
 				// 解析类别字符串并使用适当的颜色打印
 				parts := strings.SplitN(category, ":", 2)
 				if len(parts) == 2 {
-					// 找出对应的类别以获取颜色
 					for catName, info := range categoryInfo {
 						catKey := "issue.category." + catName
 						catTrans := r.translator.Translate(catKey)
 
 						if strings.Contains(parts[0], catTrans) {
-							// 使用颜色打印类别名称和图标
 							info.Color.Printf("%s:", parts[0])
-							// 使用数字样式打印计数
 							numberStyle.Printf("%s", parts[1])
 							break
 						}
@@ -854,7 +867,7 @@ func (r *Report) GenerateMarkdownReport(options *ReportOptions) {
 	level := r.getQualityLevel(score)
 
 	// 输出Markdown标题
-	fmt.Printf("# %s\n\n", r.translator.Translate("report.title"))
+	fmt.Printf("# 🌸 %s 🌸\n\n", r.translator.Translate("report.title"))
 
 	// 总体评估部分
 	fmt.Printf("## %s\n\n", r.translator.Translate("report.overall_assessment"))
@@ -948,7 +961,7 @@ func (r *Report) printMarkdownTopFiles(options *ReportOptions) {
 			i+1,
 			f.FilePath,
 			r.translator.Translate("report.score"),
-			math.Round(f.FileScore*10000)/100)
+			adjustFileScore(f.FileScore))
 
 		// 问题分类统计
 		issuesByCategory := r.categorizeIssues(f.Issues)

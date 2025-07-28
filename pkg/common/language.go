@@ -1,6 +1,5 @@
 // Package common 提供项目通用功能
 // 创建者：Done-0
-// 创建时间：2023-10-01
 package common
 
 import (

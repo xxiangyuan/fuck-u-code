@@ -23,9 +23,9 @@
 
 ## 安利一下
 
-我的 AI 赛博算命网站上线啦！👉 [玄学工坊](https://bazi.site) - https://bazi.site
+我的 AI 赛博算命网站上线啦！👉 [玄学工坊](https://bazi.site/register?invite_code=WYRRxxgt) - https://bazi.site
 
-> 现在只要每通过邀请码邀请一位新人注册，双方均可免费获得 10 次对话次数哦！
+> 现在每通过邀请码邀请一位新人注册，双方均可免费获得 10 次对话次数哦！
 
 我的开源博客项目 [Jank](https://github.com/Done-0/Jank) - https://github.com/Done-0/Jank
 

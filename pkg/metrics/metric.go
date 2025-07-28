@@ -1,6 +1,5 @@
 // Package metrics 提供代码质量分析指标
 // 创建者：Done-0
-// 创建时间：2023-10-01
 package metrics
 
 import (
@@ -63,7 +62,8 @@ func (r *AnalysisResult) GetOverallScore() float64 {
 	totalWeight := 0.0
 
 	for _, result := range r.MetricResults {
-		totalScore += result.Score * result.Weight
+		metricScore := result.Score
+		totalScore += metricScore * result.Weight
 		totalWeight += result.Weight
 	}
 
@@ -71,7 +71,16 @@ func (r *AnalysisResult) GetOverallScore() float64 {
 		return 0.0
 	}
 
-	return totalScore / totalWeight
+	finalScore := totalScore / totalWeight
+
+	// 确保分数在0-1范围内
+	if finalScore > 1.0 {
+		finalScore = 1.0
+	} else if finalScore < 0.0 {
+		finalScore = 0.0
+	}
+
+	return finalScore
 }
 
 // AddMetricResult 添加指标结果

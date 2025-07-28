@@ -1,6 +1,5 @@
 // Package main 提供代码质量分析工具的入口点
 // 创建者：Done-0
-// 创建时间：2023-10-01
 package main
 
 import (

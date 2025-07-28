@@ -1,6 +1,5 @@
 // Package analyzer 提供代码分析功能
 // 创建者：Done-0
-// 创建时间：2023-10-01
 package analyzer
 
 import (
@@ -8,11 +7,13 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Done-0/fuck-u-code/pkg/common"
 	"github.com/Done-0/fuck-u-code/pkg/i18n"
 	"github.com/Done-0/fuck-u-code/pkg/metrics"
 	"github.com/Done-0/fuck-u-code/pkg/parser"
+	"github.com/fatih/color"
 )
 
 // Analyzer 代码分析器接口
@@ -135,7 +136,7 @@ func (a *DefaultAnalyzer) AnalyzeFile(filePath string) (*AnalysisResult, error) 
 	return result, nil
 }
 
-// AnalyzeWithExcludes 使用指定的排除模式分析目录
+// AnalyzeWithExcludes 使用指定的包含/排除模式分析目录
 func (a *DefaultAnalyzer) AnalyzeWithExcludes(path string, includePatterns []string, excludePatterns []string) (*AnalysisResult, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -146,32 +147,120 @@ func (a *DefaultAnalyzer) AnalyzeWithExcludes(path string, includePatterns []str
 		return a.AnalyzeFile(path)
 	}
 
-	// 只在非静默模式下显示文件搜索进度
 	var lastFoundCount int
-	var progressCallback func(int)
+
+	// 定义进度回调函数
+	progressCallback := func(found int) {
+		if !a.silent && found > lastFoundCount {
+			lastFoundCount = found
+			// 更新搜索进度
+			fmt.Printf("\r🔍 %s %d", a.translator.Translate("analyzer.searching_files"), found)
+		}
+	}
 
 	if !a.silent {
-		fmt.Printf("🔍 %s\n", a.translator.Translate("analyzer.searching_files"))
-		progressCallback = func(found int) {
-			if found > lastFoundCount {
-				fmt.Printf("\r📂 %s: %d", a.translator.Translate("analyzer.files_found"), found)
-				lastFoundCount = found
-			}
-		}
+		fmt.Printf("🔍 %s...\n", a.translator.Translate("analyzer.searching_files"))
 	} else {
 		// 静默模式下的空回调
 		progressCallback = func(int) {}
 	}
 
-	// 分析目录中的所有文件
-	fileResults, err := a.codeAnalyzer.AnalyzeDirectory(path, includePatterns, excludePatterns, progressCallback)
+	// 查找匹配的源码文件
+	files, err := common.FindSourceFiles(path, includePatterns, excludePatterns, progressCallback)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(a.translator.Translate("error.source_files_not_found"), err)
 	}
 
-	// 只在非静默模式下清除进度显示
+	// 只在非静默模式下清除进度显示并显示文件总数
 	if !a.silent && lastFoundCount > 0 {
-		fmt.Printf("\r%s\r", strings.Repeat(" ", 50))
+		fmt.Printf("\r%s\r", strings.Repeat(" ", 80))
+		fmt.Printf("📂 %s: %d\n", a.translator.Translate("analyzer.files_found"), len(files))
+	}
+
+	// 如果没有找到文件，直接返回空结果
+	if len(files) == 0 {
+		return &AnalysisResult{
+			Metrics:       make(map[string]MetricResult),
+			FilesAnalyzed: []FileAnalysisResult{},
+			TotalFiles:    0,
+			TotalLines:    0,
+		}, nil
+	}
+
+	// 保存分析结果
+	fileResults := make([]*metrics.AnalysisResult, 0, len(files))
+
+	// 在分析文件前显示进度条
+	if !a.silent {
+		// 不要添加多余的空行
+		progressStyle := color.New(color.FgHiCyan)
+		fileInfoStyle := color.New(color.FgHiBlack) // 淡色字体
+
+		// 根据语言选择进度文本
+		var progressText string
+		switch a.translator.GetLanguage() {
+		case i18n.EnUS:
+			progressText = "Analyzing files"
+		default:
+			progressText = "正在分析文件"
+		}
+
+		// 保存文件名历史
+		var currentFile string
+		fileCount := len(files)
+
+		// 分析每个文件并显示进度
+		for i, filePath := range files {
+			// 更新文件名
+			currentFile = shortenPath(filePath)
+
+			// 计算和显示进度条
+			percent := float64(i+1) / float64(fileCount)
+			barWidth := 30
+			barCompleted := int(float64(barWidth) * percent)
+			barRemaining := barWidth - barCompleted
+
+			// 显示进度条
+			fmt.Printf("\r\033[K  ")
+			progressStyle.Printf("%s: ", progressText)
+			fmt.Printf("%d/%d ", i+1, fileCount)
+			progressStyle.Printf("[%s%s]",
+				strings.Repeat("█", barCompleted),
+				strings.Repeat("░", barRemaining))
+
+			// 显示当前处理的文件
+			fmt.Printf("\n\033[K  正在处理: ")
+			fileInfoStyle.Printf("%s", currentFile)
+
+			// 回到进度条行
+			fmt.Printf("\033[A\r")
+
+			// 分析文件
+			result, err := a.codeAnalyzer.AnalyzeFile(filePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, a.translator.Translate("error.file_analysis_failed"), filePath, err)
+				continue
+			}
+			fileResults = append(fileResults, result)
+
+			// 大量文件时不要延迟
+			if len(files) < 30 {
+				time.Sleep(20 * time.Millisecond)
+			}
+		}
+
+		// 清理进度条行
+		fmt.Print("\r\033[K\n")
+	} else {
+		// 静默模式下直接分析文件
+		for _, filePath := range files {
+			result, err := a.codeAnalyzer.AnalyzeFile(filePath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, a.translator.Translate("error.file_analysis_failed"), filePath, err)
+				continue
+			}
+			fileResults = append(fileResults, result)
+		}
 	}
 
 	// 创建结果对象
@@ -240,6 +329,16 @@ func (a *DefaultAnalyzer) AnalyzeWithExcludes(path string, includePatterns []str
 	result.CodeQualityScore = a.codeAnalyzer.CalculateOverallScore(fileResults)
 
 	return result, nil
+}
+
+// shortenPath 缩短文件路径，只显示最后几个部分
+func shortenPath(path string) string {
+	parts := strings.Split(path, "/")
+	if len(parts) <= 4 {
+		return path
+	}
+
+	return "./" + strings.Join(parts[len(parts)-3:], "/")
 }
 
 // CodeAnalyzer 代码分析器
@@ -377,11 +476,14 @@ func (a *CodeAnalyzer) CalculateOverallScore(results []*metrics.AnalysisResult) 
 	}
 
 	totalScore := 0.0
+	fileCount := 0
+
 	for _, result := range results {
 		totalScore += result.GetOverallScore()
+		fileCount++
 	}
 
-	return totalScore / float64(len(results))
+	return totalScore / float64(fileCount)
 }
 
 // min 返回两个整数中较小的一个

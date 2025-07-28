@@ -157,54 +157,29 @@ func (m *StructureAnalysisMetric) analyzeImportComplexity(file *ast.File) []stri
 
 // calculateScore 计算结构得分
 func (m *StructureAnalysisMetric) calculateScore(nestingDepth, circularCount, importIssueCount int) float64 {
-	nestingScore := 0.0
-	switch {
-	case nestingDepth <= 1:
-		nestingScore = 0.0 // 极佳结构
-	case nestingDepth == 2:
-		nestingScore = 0.15 // 优秀结构
-	case nestingDepth == 3:
-		nestingScore = 0.3 // 良好结构
-	case nestingDepth == 4:
-		nestingScore = 0.45 // 一般结构
-	case nestingDepth == 5:
-		nestingScore = 0.6 // 稍差结构
-	case nestingDepth == 6:
-		nestingScore = 0.75 // 较差结构
-	case nestingDepth <= 8:
-		nestingScore = 0.85 // 差结构
-	case nestingDepth <= 10:
-		nestingScore = 0.95 // 极差结构
-	default:
-		nestingScore = 1.0 // 不可接受结构
+	// 嵌套深度分数
+	nestingScore := 0.4
+	if nestingDepth > 1 {
+		nestingScore += float64(nestingDepth-1) * 0.15
+	}
+	if nestingScore > 1.0 {
+		nestingScore = 1.0
 	}
 
-	circularScore := 0.0
-	switch {
-	case circularCount == 0:
-		circularScore = 0.0
-	case circularCount == 1:
-		circularScore = 0.3
-	case circularCount == 2:
-		circularScore = 0.6
-	case circularCount == 3:
-		circularScore = 0.8
-	default:
+	// 循环引用分数
+	circularScore := 0.5
+	if circularCount > 0 {
 		circularScore = 1.0
 	}
 
-	importScore := 0.0
-	switch {
-	case importIssueCount == 0:
-		importScore = 0.0
-	case importIssueCount == 1:
-		importScore = 0.4
-	case importIssueCount == 2:
-		importScore = 0.7
-	default:
+	// 导入问题分数
+	importScore := 0.4
+	if importIssueCount > 0 {
+		importScore += float64(importIssueCount) * 0.3
+	}
+	if importScore > 1.0 {
 		importScore = 1.0
 	}
 
-	// 综合评分
 	return nestingScore*0.6 + circularScore*0.25 + importScore*0.15
 }
