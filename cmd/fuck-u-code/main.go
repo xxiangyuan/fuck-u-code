@@ -62,6 +62,9 @@ var defaultExcludes = []string{
 	"**/*_test.c", "**/*_test.cpp", "**/*_tests.c", "**/*_tests.cpp",
 	"**/test/**/**.c", "**/test/**/**.cpp", "**/tests/**/**.c", "**/tests/**/**.cpp",
 	"**/gtest/**", "**/googletest/**", "**/catch/**", "**/boost/test/**",
+
+	// for rust
+	"**/benches/**", "**/examples/**", "**/build.rs",
 }
 
 func main() {
