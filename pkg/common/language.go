@@ -13,7 +13,6 @@ type LanguageType string
 // 支持的编程语言常量定义
 const (
 	Go          LanguageType = "go"
-	Rust        LanguageType = "rust"
 	JavaScript  LanguageType = "javascript"
 	TypeScript  LanguageType = "typescript"
 	Python      LanguageType = "python"
@@ -26,7 +25,6 @@ const (
 // supportedLanguages 用于快速查找支持的语言
 var supportedLanguages = map[LanguageType]bool{
 	Go:         true,
-	Rust:       true,
 	JavaScript: true,
 	TypeScript: true,
 	Python:     true,
@@ -70,8 +68,6 @@ func (d *DefaultDetector) DetectLanguage(filePath string) LanguageType {
 		return CPlusPlus
 	case ".c", ".h":
 		return C
-	case ".rs":
-		return Rust
 	default:
 		return Unsupported
 	}
