@@ -88,8 +88,6 @@ func CreateParser(language common.LanguageType) Parser {
 	switch language {
 	case common.Go:
 		return NewGoParser()
-	case common.Rust:
-		return NewRustParser()
 	case common.JavaScript:
 		return NewJavaScriptParser()
 	case common.TypeScript:
