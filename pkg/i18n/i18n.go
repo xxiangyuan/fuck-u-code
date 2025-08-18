@@ -155,6 +155,7 @@ var zhCNMessages = map[string]string{
 	"cmd.summary":                    "只看结论，过程略过",
 	"cmd.markdown":                   "输出Markdown格式的精简报告，便于AI工具处理",
 	"cmd.exclude":                    "排除的文件/目录模式 (可多次使用，默认已排除常见依赖目录)",
+	"cmd.skipindex":                  "跳过所有 index.js/index.ts 文件",
 	"cmd.start_analyzing":            "开始嗅探：%s",
 	"cmd.exclude_patterns":           "排除以下文件/目录模式:",
 
@@ -423,6 +424,7 @@ var enUSMessages = map[string]string{
 	"cmd.summary":                    "Show only conclusion, skip the process",
 	"cmd.markdown":                   "Output streamlined Markdown format report, suitable for AI tool processing",
 	"cmd.exclude":                    "Exclude file/directory patterns (can be used multiple times, common dependency directories are excluded by default)",
+	"cmd.skipindex":                  "Skip all index.js/index.ts files",
 	"cmd.start_analyzing":            "Start analyzing: %s",
 	"cmd.exclude_patterns":           "Excluding the following file/directory patterns:",
 
