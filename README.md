@@ -83,7 +83,7 @@ fuck-u-code analyze
 | `--markdown` | `-m`   | 输出Markdown格式报告，便于AI工具处理 |
 | `--lang`     | `-l`   | 指定输出语言 (zh-CN, en-US)        |
 | `--exclude`  | `-e`   | 排除特定文件/目录模式 (可多次使用) |
-
+| `--skipindex`  | `-x`   | 跳过index.js/index.ts(也只有js有这个集中导出痛点了) |
 ### 使用示例
 
 ```bash

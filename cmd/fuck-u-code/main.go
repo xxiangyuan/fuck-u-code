@@ -24,6 +24,7 @@ var (
 	language       string          // 输出语言
 	translator     i18n.Translator // 翻译器
 	exclude        []string        // 排除的文件/目录模式
+	skipIndex      bool            // 是否跳过所有index.js/index.ts文件
 )
 
 // 默认排除的模式
@@ -131,7 +132,7 @@ func createRootCommand() *cobra.Command {
 			}
 
 			// 运行分析
-			runAnalysis(path, lang, verbose, topFiles, maxIssues, summaryOnly, markdownOutput, exclude)
+			runAnalysis(path, lang, verbose, topFiles, maxIssues, summaryOnly, markdownOutput, exclude, skipIndex)
 			return nil
 		},
 	}
@@ -202,8 +203,11 @@ func createAnalyzeCommand() *cobra.Command {
 				lang = i18n.ZhCN
 			}
 
+			// 获取skipindex选项
+			skipIndexFlag, _ := cmd.Flags().GetBool("skipindex")
+
 			// 运行分析
-			runAnalysis(path, lang, verboseFlag, topFlag, issuesFlag, summaryFlag, markdownFlag, excludePatterns)
+			runAnalysis(path, lang, verboseFlag, topFlag, issuesFlag, summaryFlag, markdownFlag, excludePatterns, skipIndexFlag)
 		},
 	}
 
@@ -215,6 +219,7 @@ func createAnalyzeCommand() *cobra.Command {
 	analyzeCmd.Flags().BoolP("summary", "s", false, translator.Translate("cmd.summary"))
 	analyzeCmd.Flags().BoolP("markdown", "m", false, translator.Translate("cmd.markdown"))
 	analyzeCmd.Flags().StringArrayP("exclude", "e", nil, translator.Translate("cmd.exclude"))
+	analyzeCmd.Flags().BoolP("skipindex", "x", false, translator.Translate("cmd.skipindex"))
 
 	return analyzeCmd
 }
@@ -347,6 +352,7 @@ func addFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVarP(&summaryOnly, "summary", "s", false, translator.Translate("cmd.summary"))
 	cmd.Flags().BoolVarP(&markdownOutput, "markdown", "m", false, translator.Translate("cmd.markdown"))
 	cmd.Flags().StringArrayVarP(&exclude, "exclude", "e", nil, translator.Translate("cmd.exclude"))
+	cmd.Flags().BoolVarP(&skipIndex, "skipindex", "x", false, translator.Translate("cmd.skipindex"))
 }
 
 // setLanguage 设置语言
@@ -397,6 +403,7 @@ func updateFlagDescriptions(cmd *cobra.Command) {
 		"summary":         "cmd.summary",
 		"markdown":        "cmd.markdown",
 		"exclude":         "cmd.exclude",
+		"skipindex":       "cmd.skipindex",
 		"help":            "cmd.help_flag",
 		"no-descriptions": "cmd.no_descriptions",
 	}
@@ -467,7 +474,7 @@ func updateCompletionCommand(cmd *cobra.Command) {
 }
 
 // runAnalysis 运行代码分析
-func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, maxIssues int, summaryOnly bool, markdownOutput bool, excludePatterns []string) {
+func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, maxIssues int, summaryOnly bool, markdownOutput bool, excludePatterns []string, skipIndex bool) {
 	// 设置翻译器
 	translator := i18n.NewTranslator(lang)
 
@@ -488,6 +495,11 @@ func runAnalysis(path string, lang i18n.Language, verbose bool, topFiles int, ma
 
 	// 添加默认排除模式
 	excludePatterns = append(excludePatterns, defaultExcludes...)
+
+	// 如果启用了skipindex选项，添加index文件排除模式
+	if skipIndex {
+		excludePatterns = append(excludePatterns, "**/index.js", "**/index.ts", "**/index.jsx", "**/index.tsx")
+	}
 
 	// 创建分析器
 	analyzer := analyzer.NewAnalyzer()
