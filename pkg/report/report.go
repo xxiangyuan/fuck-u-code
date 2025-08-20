@@ -1,6 +1,3 @@
-// Package report 提供代码质量分析报告生成功能
-// 创建者：Done-0
-
 package report
 
 import (
@@ -160,8 +157,8 @@ func (r *Report) printMetricItems() {
 		}
 	}
 
-	nameFormat := fmt.Sprintf("  %%s %%-%ds", maxNameLen+2)
-	scoreFormat := "%-8s"
+	nameFormat := fmt.Sprintf("%%%ds %%-%ds\t", 2, maxNameLen+2)
+	scoreFormat := "%-8s\t"
 
 	var totalWeight float64
 	var weightedScore float64
@@ -205,7 +202,7 @@ func (r *Report) printMetricItems() {
 		}
 
 		// 格式化分数 - 使用原始百分比
-		scoreStr := fmt.Sprintf("%.2f%s", scorePercentage, r.translator.Translate("metric.score.suffix"))
+		scoreStr := fmt.Sprintf("%.2f%s\t", scorePercentage, r.translator.Translate("metric.score.suffix"))
 
 		statusColor.Printf(nameFormat, statusEmoji, m.Name)
 		metricStyle.Printf(scoreFormat, scoreStr)
