@@ -19,6 +19,7 @@ const (
 	Java        LanguageType = "java"
 	CPlusPlus   LanguageType = "cpp"
 	C           LanguageType = "c"
+	CSharp      LanguageType = "csharp"
 	Unsupported LanguageType = "unsupported"
 )
 
@@ -31,6 +32,7 @@ var supportedLanguages = map[LanguageType]bool{
 	Java:       true,
 	CPlusPlus:  true,
 	C:          true,
+	CSharp:     true,
 }
 
 // LanguageDetector 语言检测器接口
@@ -68,6 +70,8 @@ func (d *DefaultDetector) DetectLanguage(filePath string) LanguageType {
 		return CPlusPlus
 	case ".c", ".h":
 		return C
+	case ".cs", ".razor": // CSharp及Blazor/Razor支持
+        return CSharp
 	default:
 		return Unsupported
 	}

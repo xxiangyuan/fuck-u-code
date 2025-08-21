@@ -50,6 +50,7 @@ func (p *GenericParser) SupportedLanguages() []common.LanguageType {
 		common.Java,
 		common.CPlusPlus,
 		common.C,
+		common.CSharp,
 		common.Unsupported,
 	}
 }
@@ -60,9 +61,9 @@ func (p *GenericParser) countCommentLines(content string, language common.Langua
 	lines := strings.Split(content, "\n")
 
 	switch language {
-	case common.JavaScript, common.TypeScript, common.Java, common.CPlusPlus, common.C:
+	case common.JavaScript, common.TypeScript, common.Java, common.CPlusPlus, common.C, common.CSharp:
 		// C风格注释处理
-		commentCount = p.countCStyleComments(lines)
+		commentCount = p.countCStyleComments(lines, language)
 	case common.Python:
 		// Python风格注释处理
 		commentCount = p.countPythonComments(lines)
@@ -75,9 +76,10 @@ func (p *GenericParser) countCommentLines(content string, language common.Langua
 }
 
 // countCStyleComments 计算C风格注释行数
-func (p *GenericParser) countCStyleComments(lines []string) int {
+func (p *GenericParser) countCStyleComments(lines []string, language common.LanguageType) int {
 	commentCount := 0
 	inBlockComment := false
+	inXmlDoc := false
 
 	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
@@ -90,11 +92,30 @@ func (p *GenericParser) countCStyleComments(lines []string) int {
 			continue
 		}
 
+		if inXmlDoc {
+			commentCount++
+			if !strings.HasPrefix(trimmedLine, "///") && 
+			   !strings.HasPrefix(trimmedLine, "*") && 
+			   len(trimmedLine) > 0 {
+				inXmlDoc = false
+			}
+			continue
+		}
+
+		// 单行注释
 		if strings.HasPrefix(trimmedLine, "//") {
 			commentCount++
 			continue
 		}
 
+		// C# XML文档注释
+		if language == common.CSharp && strings.HasPrefix(trimmedLine, "///") {
+			commentCount++
+			inXmlDoc = true
+			continue
+		}
+
+		// 块注释开始
 		if strings.HasPrefix(trimmedLine, "/*") {
 			commentCount++
 			inBlockComment = true
@@ -168,6 +189,8 @@ func (p *GenericParser) detectFunctions(content string, lines []string, language
 		return p.detectJavaFunctions(content, lines)
 	case common.CPlusPlus, common.C:
 		return p.detectCFunctions(content, lines)
+	case common.CSharp:
+		return p.detectCSharpFunctions(content, lines)
 	default:
 		return p.detectGenericFunctions(content, lines)
 	}
@@ -179,6 +202,7 @@ var (
 	pythonPattern  = regexp.MustCompile(`(?m)^\s*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)`)
 	javaPattern    = regexp.MustCompile(`(?m)(public|private|protected|static|\s)+[\w\<\>\[\]]+\s+([\w]+)\s*\(([^\)]*)\)\s*(\{|throws)`)
 	cPattern       = regexp.MustCompile(`(?m)([\w\*]+\s+)+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^;]*)\)\s*\{`)
+	csharpPattern  = regexp.MustCompile(`(?m)^\s*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async)\s+)*([a-zA-Z_][a-zA-Z0-9_<>\[\]]*(?:\?)?)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*(?:\{|=>)`)
 	genericPattern = regexp.MustCompile(`(?m)(function|def|void|int|bool|string|double|float)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(`)
 )
 
@@ -240,24 +264,169 @@ func (p *GenericParser) detectGenericFunctions(content string, lines []string) [
 	return p.detectFunctionsWithPattern(content, lines, genericPattern, common.Unsupported)
 }
 
+// detectCSharpFunctions 检测C#方法
+func (p *GenericParser) detectCSharpFunctions(content string, lines []string) []Function {
+	// 检测是否为Razor文件
+	isRazor := strings.Contains(content, "@page") || 
+	          strings.Contains(content, "@model") || 
+	          strings.Contains(content, "@{") ||
+	          strings.Contains(content, "@code") ||
+	          strings.Contains(content, "@functions")
+
+	if isRazor {
+		return p.detectRazorFunctions(content, lines)
+	}
+
+	return p.detectFunctionsWithPattern(content, lines, csharpPattern, common.CSharp)
+}
+
+// detectRazorFunctions 检测Razor文件中的函数
+func (p *GenericParser) detectRazorFunctions(content string, lines []string) []Function {
+	functions := make([]Function, 0)
+
+	// 提取@code和@functions块
+	codeBlocks := p.extractRazorCodeBlocks(content)
+	
+	for _, block := range codeBlocks {
+		// 在代码块中检测C#方法
+		blockFunctions := p.detectFunctionsWithPattern(block.Content, strings.Split(block.Content, "\n"), csharpPattern, common.CSharp)
+		
+		// 调整行号偏移
+		for i := range blockFunctions {
+			blockFunctions[i].StartLine += block.StartLine
+			blockFunctions[i].EndLine += block.StartLine
+		}
+		
+		functions = append(functions, blockFunctions...)
+	}
+
+	// 检测生命周期方法
+	lifecycleFunctions := p.detectRazorLifecycleMethods(content, lines)
+	functions = append(functions, lifecycleFunctions...)
+
+	return functions
+}
+
+// extractRazorCodeBlocks 提取Razor代码块
+func (p *GenericParser) extractRazorCodeBlocks(content string) []RazorCodeBlock {
+	var blocks []RazorCodeBlock
+	lines := strings.Split(content, "\n")
+
+	// 匹配@code和@functions块
+	codeBlockPattern := regexp.MustCompile(`@(code|functions)\s*\{`)
+
+	for i, line := range lines {
+		if matches := codeBlockPattern.FindStringSubmatch(line); matches != nil {
+			blockType := matches[1]
+			startLine := i
+			bracketCount := strings.Count(line, "{") - strings.Count(line, "}")
+			
+			var blockContent strings.Builder
+			blockContent.WriteString(line)
+			blockContent.WriteString("\n")
+
+			// 查找块结束
+			for j := i + 1; j < len(lines) && bracketCount > 0; j++ {
+				currentLine := lines[j]
+				blockContent.WriteString(currentLine)
+				blockContent.WriteString("\n")
+				
+				bracketCount += strings.Count(currentLine, "{")
+				bracketCount -= strings.Count(currentLine, "}")
+				
+				if bracketCount == 0 {
+					blocks = append(blocks, RazorCodeBlock{
+						Content:   blockContent.String(),
+						StartLine: startLine,
+						EndLine:   j,
+						BlockType: blockType,
+					})
+					break
+				}
+			}
+		}
+	}
+
+	return blocks
+}
+
+// detectRazorLifecycleMethods 检测Razor生命周期方法
+func (p *GenericParser) detectRazorLifecycleMethods(content string, lines []string) []Function {
+	var functions []Function
+
+	lifecycleMethods := []string{
+		"OnInitialized", "OnInitializedAsync",
+		"OnParametersSet", "OnParametersSetAsync", 
+		"OnAfterRender", "OnAfterRenderAsync",
+		"Dispose", "DisposeAsync",
+		"SetParametersAsync",
+	}
+
+	for _, methodName := range lifecycleMethods {
+		pattern := regexp.MustCompile(`(?m)(?:protected\s+)?(?:override\s+)?(?:async\s+)?(?:void|Task)\s+` + methodName + `\s*\(`)
+		matches := pattern.FindAllStringIndex(content, -1)
+		
+		for _, match := range matches {
+			startLine := p.getLineNumber(content, match[0])
+			endLine := p.findBlockEnd(content, match[0], lines, startLine)
+			
+			functions = append(functions, Function{
+				Name:       methodName,
+				StartLine:  startLine,
+				EndLine:    endLine,
+				Complexity: p.estimateComplexity(content, match[0], endLine-startLine, common.CSharp),
+				Parameters: 0,
+			})
+		}
+	}
+
+	return functions
+}
+
 // detectFunctionsWithPattern 使用正则表达式检测函数（通用方法）
 func (p *GenericParser) detectFunctionsWithPattern(content string, lines []string, pattern *regexp.Regexp, language common.LanguageType) []Function {
 	functions := make([]Function, 0)
 	matches := pattern.FindAllStringSubmatchIndex(content, -1)
 
 	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
 		startPos := match[0]
+		endPos := match[1]
+		
+		// 安全检查：确保索引不超出内容长度
+		if startPos < 0 || startPos >= len(content) {
+			continue
+		}
+		if endPos < 0 || endPos > len(content) {
+			endPos = len(content)
+		}
+		if endPos <= startPos {
+			continue
+		}
+
 		startLine := p.getLineNumber(content, startPos)
 
 		// 提取函数名（根据不同语言，提取位置可能不同）
-		submatch := pattern.FindStringSubmatch(content[startPos : startPos+match[1]-match[0]])
+		matchedText := content[startPos:endPos]
+		submatch := pattern.FindStringSubmatch(matchedText)
+		
 		funcName := p.extractFunctionName(submatch, language)
+		if funcName == "" {
+			continue
+		}
 
 		// 查找函数结束位置
 		endLine := p.findBlockEnd(content, startPos, lines, startLine)
 
 		// 计算参数数量
-		params := p.countParameters(content[startPos:startPos+500], "(", ")")
+		paramEndPos := startPos + 500
+		if paramEndPos > len(content) {
+			paramEndPos = len(content)
+		}
+		params := p.countParameters(content[startPos:paramEndPos], "(", ")")
 
 		// 计算复杂度
 		complexity := p.estimateComplexity(content, startPos, endLine-startLine, language)
@@ -284,8 +453,8 @@ func (p *GenericParser) extractFunctionName(submatch []string, language common.L
 				return submatch[i]
 			}
 		}
-	case common.Java, common.C, common.CPlusPlus:
-		// Java和C/C++函数名在第2位
+	case common.Java, common.C, common.CPlusPlus, common.CSharp:
+		// Java/Csharp和C/C++函数名在第2位
 		if len(submatch) > 2 {
 			return submatch[2]
 		}
@@ -300,8 +469,12 @@ func (p *GenericParser) extractFunctionName(submatch []string, language common.L
 
 // getLineNumber 计算字符串位置对应的行号
 func (p *GenericParser) getLineNumber(content string, pos int) int {
+	if pos < 0 || pos >= len(content) {
+		return 1
+	}
+	
 	line := 1
-	for i := 0; i < pos && i < len(content); i++ {
+	for i := 0; i < pos; i++ {
 		if content[i] == '\n' {
 			line++
 		}
@@ -311,11 +484,20 @@ func (p *GenericParser) getLineNumber(content string, pos int) int {
 
 // findBlockEnd 查找代码块的结束位置
 func (p *GenericParser) findBlockEnd(content string, startPos int, lines []string, startLine int) int {
+	// 安全检查
+	if startPos < 0 || startPos >= len(content) {
+		return startLine + 1
+	}
+	if startLine <= 0 || startLine > len(lines) {
+		return len(lines)
+	}
+
 	bracketCount := 0
 	inString := false
 	inChar := false
 	inLineComment := false
 	inBlockComment := false
+	foundFirstBracket := false
 
 	for i := startPos; i < len(content); i++ {
 		c := content[i]
@@ -359,17 +541,20 @@ func (p *GenericParser) findBlockEnd(content string, startPos int, lines []strin
 			switch c {
 			case '{':
 				bracketCount++
+				foundFirstBracket = true
 			case '}':
-				bracketCount--
-				if bracketCount == 0 {
-					// 计算结束行号
-					endLine := startLine
-					for j := startPos; j <= i; j++ {
-						if content[j] == '\n' {
-							endLine++
+				if foundFirstBracket {
+					bracketCount--
+					if bracketCount == 0 {
+						// 计算结束行号
+						endLine := startLine
+						for j := startPos; j <= i && j < len(content); j++ {
+							if content[j] == '\n' {
+								endLine++
+							}
 						}
+						return endLine
 					}
-					return endLine
 				}
 			}
 		}
@@ -463,6 +648,11 @@ func (p *GenericParser) estimateComplexity(content string, startPos, lineCount i
 	// 基础复杂度为1
 	complexity := 1
 
+	// 安全检查
+	if startPos < 0 || startPos >= len(content) || lineCount <= 0 {
+		return complexity
+	}
+
 	// 根据语言选择关键字
 	var keywords []string
 	switch language {
@@ -470,8 +660,8 @@ func (p *GenericParser) estimateComplexity(content string, startPos, lineCount i
 		keywords = []string{"if", "else", "for", "while", "case", "catch", "&&", "||", "?", "switch"}
 	case common.Python:
 		keywords = []string{"if", "elif", "else", "for", "while", "except", "finally", "with", "and", "or"}
-	case common.Java:
-		keywords = []string{"if", "else", "for", "while", "do", "case", "catch", "finally", "?", "&&", "||", "switch"}
+	case common.Java, common.CSharp:
+		keywords = []string{"if", "else", "for", "while", "do", "case", "catch", "finally", "?", "&&", "||", "switch", "foreach"}
 	case common.C, common.CPlusPlus:
 		keywords = []string{"if", "else", "for", "while", "do", "case", "switch", "catch", "?", "&&", "||", "goto"}
 	default:
@@ -480,6 +670,13 @@ func (p *GenericParser) estimateComplexity(content string, startPos, lineCount i
 
 	// 提取函数内容
 	endPos := p.findContentEndPosition(content, startPos, lineCount)
+	if endPos > len(content) {
+		endPos = len(content)
+	}
+	if endPos <= startPos {
+		return complexity
+	}
+
 	funcContent := content[startPos:endPos]
 
 	// 计算关键字出现次数
@@ -496,6 +693,10 @@ func (p *GenericParser) estimateComplexity(content string, startPos, lineCount i
 
 // findContentEndPosition 找到内容的结束位置
 func (p *GenericParser) findContentEndPosition(content string, startPos, lineCount int) int {
+		if startPos < 0 || startPos >= len(content) || lineCount <= 0 {
+		return startPos
+	}
+	
 	endPos := startPos
 	lineCounter := 0
 
