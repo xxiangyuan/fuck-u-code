@@ -1,11 +1,17 @@
-FROM golang:1.23.10-alpine
+FROM golang:1.23.10-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+ENV GOPROXY=https://goproxy.cn,direct
+RUN go mod download
 
-WORKDIR /build
+COPY . .
+RUN go build -o /app/fuck-u-code ./cmd/fuck-u-code
 
-RUN mkdir -p /fuck-u-code
+FROM alpine:3.20.3
+WORKDIR /bin
+COPY --from=builder /app/fuck-u-code .
 
-COPY . /fuck-u-code
-
-RUN cd /fuck-u-code && go build -o /bin/fuck-u-code ./cmd/fuck-u-code
+RUN adduser -D nonroot
+USER nonroot
 
 ENTRYPOINT ["/bin/fuck-u-code"]
