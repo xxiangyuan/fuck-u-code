@@ -133,6 +133,14 @@ fuck-u-code analyze --markdown --top 10 --lang en-US > detailed-report.md
 
 # 只输出总结（适合概览）
 fuck-u-code analyze --markdown --summary > summary.md
+
+#输出详细报告
+# 先设置编码
+$OutputEncoding = [System.Text.Encoding]::UTF8                                                                                        
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8                                                                              
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+# 然后运行分析命令                                                                        
+go run ./cmd/fuck-u-code analyze --markdown --lang zh-CN E:\myWorkProject\MyWorkStudio\jiazheng_1 --markdown > report.md
 ```
 
 Markdown输出包含：
